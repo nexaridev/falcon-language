@@ -1,0 +1,15 @@
+use collections as c
+use time
+
+func main() {
+    fix count = 1500
+    fix values = c.newList()
+    each (i in 0..count) { c.push(values, (i * 7919) % count) }
+    fix started = time.monotonic()
+    fix sorted = c.sortNumbers(values)
+    fix elapsed = (time.monotonic() - started) * 1000
+    fix sumStarted = time.monotonic()
+    fix checksum = c.sumNumbers(sorted)
+    fix sumElapsed = (time.monotonic() - sumStarted) * 1000
+    say(elapsed, checksum, sumElapsed)
+}

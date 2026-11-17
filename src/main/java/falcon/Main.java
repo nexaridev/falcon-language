@@ -19,7 +19,7 @@ public final class Main {
 
     static int cli(String[] args, InputStream in, PrintStream out, PrintStream err) {
         if (args.length == 0 || args[0].equals("--help") || args[0].equals("help")) {
-            out.println("Falcon 0.8.0 — Java reference interpreter\n"
+            out.println("Falcon 0.9.0 — Java reference interpreter\n"
                     + "Usage: falcon <run|check|tokens> <file.fc> [--max-steps N]\n"
                     + "       falcon install <github-owner/repository>\n"
                     + "       falcon cmd <command>\n"
@@ -31,7 +31,7 @@ public final class Main {
                     + "tokens Print lexer tokens");
             return 0;
         }
-        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.8.0"); return 0; }
+        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.9.0"); return 0; }
         if (args[0].equals("cmd")) {
             if (args.length != 2) { err.println("Usage: falcon cmd <command>"); return 2; }
             boolean windows = System.getProperty("os.name").toLowerCase().contains("win");

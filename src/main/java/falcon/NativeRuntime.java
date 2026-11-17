@@ -149,6 +149,23 @@ final class NativeRuntime implements AutoCloseable {
             }
             case "text.from" -> Values.display(a.get(0));
             case "collections.newList" -> new ArrayList<>();
+            case "collections.sortNumbers" -> {
+                var sorted = new ArrayList<Object>(list(a, 0));
+                for (Object value : sorted) as(value, "number");
+                sorted.sort(NativeRuntime::compareNumberValues);
+                yield sorted;
+            }
+            case "collections.sumNumbers" -> {
+                boolean integers = true; java.math.BigInteger integerTotal = java.math.BigInteger.ZERO; double floatTotal = 0;
+                for (Object value : list(a, 0)) {
+                    as(value, "number");
+                    if (value instanceof Long n) { integerTotal = integerTotal.add(java.math.BigInteger.valueOf(n)); floatTotal += n; }
+                    else { integers = false; floatTotal += (Double) value; }
+                }
+                if (!Double.isFinite(floatTotal)) throw new IllegalArgumentException("sum is outside the finite number range.");
+                if (integers) yield integerTotal.longValueExact();
+                yield floatTotal;
+            }
             case "collections.newMap" -> new LinkedHashMap<String, Object>();
             case "collections.size" -> {
                 if (a.get(0) instanceof List<?> values) yield (long) values.size();
@@ -298,6 +315,11 @@ final class NativeRuntime implements AutoCloseable {
         if (!Double.isFinite(value) || value < -0x1.0p63 || value >= 0x1.0p63)
             throw new IllegalArgumentException("Number is outside the signed 64-bit integer range.");
         return (long) value;
+    }
+    private static int compareNumberValues(Object left, Object right) {
+        if (left instanceof Long a && right instanceof Long b) return Long.compare(a, b);
+        if (left instanceof Double a && right instanceof Double b) return Double.compare(a, b);
+        return new java.math.BigDecimal(left.toString()).compareTo(new java.math.BigDecimal(right.toString()));
     }
     private static double finite(double value) {
         if (!Double.isFinite(value)) throw new IllegalArgumentException("Operation has no finite real result for these arguments.");

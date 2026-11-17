@@ -101,6 +101,8 @@ final class StandardLibrary {
         define("text.toNumber number value:string");
         define("text.from string value:any");
         define("collections.newList list");
+        define("collections.sortNumbers list items:list");
+        define("collections.sumNumbers number items:list");
         define("collections.newMap map");
         define("collections.size int value:any");
         define("collections.push void items:list value:any");

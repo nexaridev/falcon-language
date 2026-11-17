@@ -64,19 +64,12 @@ func reverse(items: list) -> list {
 }
 
 func sortNumbers(items: list) -> list {
-    // Stable insertion sort; the input list is left unchanged.
-    var result = newList()
-    each (item in items) {
-        fix value = asNumber(item)
-        push(result, value)
-        var index = size(result) - 1
-        while (index > 0 && native.compareNumbers(asNumber(get(result, index - 1)), value) > 0) {
-            set(result, index, get(result, index - 1))
-            index = index - 1
-        }
-        set(result, index, value)
-    }
-    give result
+    // Copy first so callers keep their original list; the host uses O(n log n) TimSort.
+    give native.sortNumbers(items)
+}
+
+func sumNumbers(items: list) -> number {
+    give native.sumNumbers(items)
 }
 
 func asNumber(value: any) -> number {
