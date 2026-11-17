@@ -1,7 +1,7 @@
 # Falcon (.fc)
 
 Falcon is a small, statically checked programming language implemented in Java.
-Version 0.9 is a working reference interpreter with a separate lexer, parser,
+Version 0.10 is a working reference interpreter with a separate lexer, parser,
 abstract syntax tree, semantic checker, and execution backend.
 
 ```fc

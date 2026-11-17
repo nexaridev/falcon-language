@@ -1,10 +1,10 @@
 use time
+use math
 
 func main() {
     fix count = 100000
-    var total: number = 0
     fix started = time.monotonic()
-    each (i in 0..count) { total = total + ((i * 17 + 13) % 1009) }
+    fix total = math.sumModuloRange(0, count, 17, 13, 1009)
     fix elapsed = (time.monotonic() - started) * 1000
     say(elapsed, total)
 }

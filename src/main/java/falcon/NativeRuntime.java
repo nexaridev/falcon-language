@@ -119,6 +119,7 @@ final class NativeRuntime implements AutoCloseable {
                 yield checkedInteger(n(a, 0));
             }
             case "math.pi" -> Math.PI;
+            case "math.sumModuloRange" -> sumModuloRange(i(a,0),i(a,1),i(a,2),i(a,3),i(a,4));
             case "text.length" -> (long) s(a, 0).codePointCount(0, s(a, 0).length());
             case "text.trim" -> s(a, 0).strip();
             case "text.lower" -> s(a, 0).toLowerCase(Locale.ROOT);
@@ -320,6 +321,28 @@ final class NativeRuntime implements AutoCloseable {
         if (left instanceof Long a && right instanceof Long b) return Long.compare(a, b);
         if (left instanceof Double a && right instanceof Double b) return Double.compare(a, b);
         return new java.math.BigDecimal(left.toString()).compareTo(new java.math.BigDecimal(right.toString()));
+    }
+    private static long sumModuloRange(long start,long end,long multiplier,long offset,long modulus) {
+        if(modulus<=0) throw new IllegalArgumentException("modulus must be a positive integer.");
+        if(end<start) throw new IllegalArgumentException("range end must be greater than or equal to its start.");
+        java.math.BigInteger n=java.math.BigInteger.valueOf(end).subtract(java.math.BigInteger.valueOf(start));
+        java.math.BigInteger m=java.math.BigInteger.valueOf(modulus);
+        java.math.BigInteger a=java.math.BigInteger.valueOf(multiplier).mod(m);
+        java.math.BigInteger b=java.math.BigInteger.valueOf(multiplier).multiply(java.math.BigInteger.valueOf(start)).add(java.math.BigInteger.valueOf(offset)).mod(m);
+        java.math.BigInteger triangle=n.multiply(n.subtract(java.math.BigInteger.ONE)).divide(java.math.BigInteger.TWO);
+        java.math.BigInteger sum=a.multiply(triangle).add(b.multiply(n)).subtract(m.multiply(floorSum(n,m,a,b)));
+        try{return sum.longValueExact();}catch(ArithmeticException e){throw new IllegalArgumentException("sum is outside the signed 64-bit integer range.");}
+    }
+    private static java.math.BigInteger floorSum(java.math.BigInteger n,java.math.BigInteger m,java.math.BigInteger a,java.math.BigInteger b){
+        java.math.BigInteger answer=java.math.BigInteger.ZERO;
+        while(true){
+            if(a.compareTo(m)>=0){answer=answer.add(n.subtract(java.math.BigInteger.ONE).multiply(n).multiply(a.divide(m)).divide(java.math.BigInteger.TWO));a=a.mod(m);}
+            if(b.compareTo(m)>=0){answer=answer.add(n.multiply(b.divide(m)));b=b.mod(m);}
+            java.math.BigInteger y=a.multiply(n).add(b);
+            if(y.compareTo(m)<0)return answer;
+            n=y.divide(m);b=y.mod(m);
+            java.math.BigInteger oldM=m;m=a;a=oldM;
+        }
     }
     private static double finite(double value) {
         if (!Double.isFinite(value)) throw new IllegalArgumentException("Operation has no finite real result for these arguments.");

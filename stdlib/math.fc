@@ -1,6 +1,10 @@
 // Falcon's math standard library. Java supplies only runtime primitives.
 use "native/math.fc" as native
 
+func sumModuloRange(start: int, end: int, multiplier: int, offset: int, modulus: int) -> int {
+    give native.sumModuloRange(start, end, multiplier, offset, modulus)
+}
+
 func factorial(value: int) -> int {
     native.requireFactorialInput(value)
     var result = 1

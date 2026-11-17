@@ -92,9 +92,16 @@ final class Interpreter {
                 return;
             }
             Range range = (Range) iterable;
+            // Falcon has no closures, so an each-variable's per-iteration cell
+            // cannot escape. Reuse its lexical scope and cell instead of
+            // allocating a HashMap and Cell for every integer in a large range.
+            Scope iteration = new Scope(scope);
+            Cell loopVariable = new Cell(Type.INT, range.start());
             for (long i = range.start(); i < range.end(); i++) {
                 tick(each.token());
-                Scope iteration = new Scope(scope); iteration.values.put(each.name().text(), new Cell(Type.INT, i));
+                iteration.values.clear();
+                iteration.values.put(each.name().text(), loopVariable);
+                loopVariable.value = i;
                 statements(each.body(), iteration);
             }
         } else if (statement instanceof Give give) {

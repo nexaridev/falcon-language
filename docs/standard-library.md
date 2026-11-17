@@ -48,6 +48,8 @@ func readNumber() -> number
 
 ## math
 
+`sumModuloRange(start, end, multiplier, offset, modulus)` quickly sums `(i * multiplier + offset) % modulus` for `start <= i < end`. It uses a logarithmic floor-sum algorithm, so it can replace very large loops when the result is only the aggregate. The modulus must be positive; the exact result must fit in `int`.
+
 number arguments accept integers and decimals. square, abs, min, max and clamp preserve the selected/computed numeric representation. factorial requires an int from 0 through 20. sqrt requires a nonnegative input; pow rejects non-finite/non-real results. toInt truncates toward zero and checks the 64-bit range; round chooses the nearest integer with ties toward positive infinity. floor/ceil return float; pi returns a float constant.
 
 ```fc

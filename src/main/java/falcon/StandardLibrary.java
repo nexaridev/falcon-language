@@ -85,6 +85,7 @@ final class StandardLibrary {
         define("math.round int value:number");
         define("math.toInt int value:number");
         define("math.pi float");
+        define("math.sumModuloRange int start:int end:int multiplier:int offset:int modulus:int");
         define("text.length int value:string");
         define("text.trim string value:string");
         define("text.lower string value:string");
