@@ -67,4 +67,20 @@ final class Values {
             return new String(Character.toChars(string.codePointAt(start)));
         } catch (IllegalArgumentException e) { throw new FalconError(site, e.getMessage()); }
     }
+    @SuppressWarnings("unchecked")
+    static void assign(Object target, Object index, Object value, Token site) {
+        try {
+            if (target instanceof List<?> list) {
+                ((List<Object>) list).set(offset((long) index, list.size()), value);
+                return;
+            }
+            if (target instanceof Map<?, ?> map) {
+                ((Map<Object, Object>) map).put(index, value);
+                return;
+            }
+            throw new IllegalArgumentException("Only lists and maps support index assignment.");
+        } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
+            throw new FalconError(site, e.getMessage());
+        }
+    }
 }

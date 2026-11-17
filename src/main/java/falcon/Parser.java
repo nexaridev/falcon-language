@@ -6,14 +6,15 @@ import java.util.Set;
 import static falcon.Ast.*;
 
 final class Parser {
-    private static final Set<String> RESERVED = Set.of("func", "var", "fix", "if", "elseif", "when", "else", "while",
-            "each", "in", "give", "true", "false", "int", "float", "number", "bool", "string", "void", "use", "as", "any", "list", "map", "null");
+    private static final Set<String> RESERVED = Set.of("func", "var", "fix", "if", "elseif", "when", "else", "while", "try", "catch",
+            "each", "in", "give", "true", "false", "int", "float", "number", "bool", "string", "void", "use", "as", "any", "list", "map", "null", "struct");
     private final List<Token> tokens;
     private int pos, parentheses;
     Parser(List<Token> tokens) { this.tokens = tokens; }
 
     Program parse() {
         List<Function> functions = new ArrayList<>();
+        List<StructDecl> structs = new ArrayList<>();
         List<Import> imports = new ArrayList<>();
         separators();
         while (peek().kind() != Token.Kind.EOF) {
@@ -30,6 +31,15 @@ final class Parser {
                 }
                 endStatement(); imports.add(new Import(start, path, alias, named)); separators(); continue;
             }
+            if (match("struct")) {
+                Token name = name(); newlines(); expect("{"); separators();
+                List<StructField> fields = new ArrayList<>();
+                while (!at("}") && peek().kind() != Token.Kind.EOF) {
+                    Token field = name(); expect(":"); fields.add(new StructField(field, type()));
+                    if (match(",")) separators(); else separators();
+                }
+                expect("}"); separators(); structs.add(new StructDecl(name, List.copyOf(fields))); continue;
+            }
             expect("func");
             Token name = name();
             expect("("); newlines();
@@ -43,7 +53,7 @@ final class Parser {
             functions.add(new Function(name, List.copyOf(params), result, block()));
             separators();
         }
-        return new Program(List.copyOf(functions), List.copyOf(imports));
+        return new Program(List.copyOf(functions), List.copyOf(imports), List.copyOf(structs));
     }
 
     private Type type() {
@@ -88,6 +98,11 @@ final class Parser {
         if (match("if") || match("when")) return conditional(start);
         if (at("elseif") || at("else")) throw error(peek(), "'" + peek().text() + "' must follow an if/elseif block.");
         if (match("while")) return new While(start, condition(), block());
+        if (match("try")) {
+            Block body = block(); newlines(); expect("catch"); expect("("); newlines();
+            Token errorName = name(); newlines(); expect(")");
+            return new TryCatch(start, body, errorName, block());
+        }
         if (match("each")) {
             expect("("); newlines(); Token name = name(); expect("in"); newlines();
             parentheses++; Expr iterable = expression(); parentheses--;
@@ -103,8 +118,17 @@ final class Parser {
             return new Assign(name, value);
         }
         Expr value = expression();
-        if (value instanceof Index && at("="))
-            throw error(peek(), "Index assignment isn't supported yet. Assign to a whole list variable instead.");
+        if (match("=")) {
+            if (value instanceof Index index) {
+                newlines(); Expr replacement = expression(); endStatement();
+                return new IndexAssign(start, index.target(), index.index(), replacement);
+            }
+            if (value instanceof Field field) {
+                newlines(); Expr replacement = expression(); endStatement();
+                return new FieldAssign(start, field.target(), field.name(), replacement);
+            }
+            throw error(tokens.get(pos - 1), "Only variables and list/map indexes can be assigned.");
+        }
         endStatement(); return new ExprStmt(start, value);
     }
 
@@ -149,10 +173,22 @@ final class Parser {
             return new Unary(operator, unary());
         }
         Expr value = primary();
-        while (match("[")) {
-            Token start = tokens.get(pos - 1); parentheses++; newlines();
-            Expr index = expression(); newlines(); expect("]"); parentheses--;
-            value = new Index(start, value, index);
+        while (true) {
+            if (match("[")) {
+                Token start = tokens.get(pos - 1); parentheses++; newlines();
+                Expr index = expression(); newlines(); expect("]"); parentheses--;
+                value = new Index(start, value, index);
+            } else if (match(".")) {
+                Token member = name();
+                if (match("(")) {
+                    parentheses++; newlines(); List<Expr> args = new ArrayList<>();
+                    if (!at(")")) do { newlines(); args.add(expression()); newlines(); } while (match(","));
+                    expect(")"); parentheses--;
+                    if (!(value instanceof Name base)) throw error(member, "Only module functions use dotted calls.");
+                    Token called = new Token(Token.Kind.NAME, base.token().text() + "." + member.text(), base.token().line(), base.token().column(), base.token().file());
+                    value = new Call(called, List.copyOf(args));
+                } else value = new Field(member, value, member);
+            } else break;
         }
         return value;
     }
@@ -175,11 +211,6 @@ final class Parser {
             if (token.text().equals("true") || token.text().equals("false"))
                 return new Literal(token, Boolean.parseBoolean(token.text()), Type.BOOL);
             if (RESERVED.contains(token.text())) throw error(token, "Expected an expression, found '" + token.text() + "'.");
-            if (match(".")) {
-                Token member = name();
-                token = new Token(Token.Kind.NAME, token.text() + "." + member.text(), token.line(), token.column(), token.file());
-                if (!at("(")) throw error(token, "Module members must be called as functions: " + token.text() + "(...).");
-            }
             if (!match("(")) return new Name(token);
             parentheses++; newlines(); List<Expr> args = new ArrayList<>();
             if (!at(")")) do { newlines(); args.add(expression()); newlines(); } while (match(","));

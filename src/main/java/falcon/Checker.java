@@ -10,9 +10,14 @@ import static falcon.Ast.*;
 
 /** Resolves scopes and checks every function before execution, including unused code. */
 final class Checker {
-    record Symbol(Type type, boolean mutable) {}
+    record Symbol(Type type, boolean mutable, String structName) {
+        Symbol(Type type, boolean mutable) { this(type, mutable, null); }
+    }
     final Map<String, Function> functions = new LinkedHashMap<>();
     final Map<Expr, Type> types = new IdentityHashMap<>();
+    final java.util.List<FalconError> errors = new java.util.ArrayList<>();
+    final Map<String, StructDecl> structs = new LinkedHashMap<>();
+    final Map<Expr, String> structNames = new IdentityHashMap<>();
     private final Deque<Map<String, Symbol>> scopes = new ArrayDeque<>();
     private Type result;
     private String namespace = "";
@@ -24,6 +29,16 @@ final class Checker {
     void check(Program program, boolean requireMain) {
         if (!program.imports().isEmpty())
             fail(program.imports().get(0).token(), "Load module imports before checking the program.");
+        for (StructDecl struct : program.structs()) {
+            if (structs.putIfAbsent(struct.name().text(), struct) != null)
+                fail(struct.name(), "Struct '" + struct.name().text() + "' is already defined.");
+            var fields = new java.util.HashSet<String>();
+            for (StructField field : struct.fields()) {
+                if (!fields.add(field.name().text())) fail(field.name(), "Field '" + field.name().text() + "' is already declared.");
+                if (field.type() == Type.VOID || field.type() == Type.RANGE || field.type() == Type.STRUCT)
+                    fail(field.name(), "Struct fields need a concrete value type.");
+            }
+        }
         for (Function function : program.functions()) {
             String name = function.name().text();
             if (name.equals("say") || functions.putIfAbsent(function.key(), function) != null)
@@ -40,10 +55,14 @@ final class Checker {
                 valueType(param.name(), param.type());
                 declare(param.name(), new Symbol(param.type(), true));
             }
-            boolean returns = statements(function.body());
-            if (result != Type.VOID && !returns)
-                fail(function.name(), "Function '" + function.name().text() + "' must give a " + result + " on every path.");
-            scopes.pop();
+            boolean returns;
+            try {
+                returns = statements(function.body());
+                if (result != Type.VOID && !returns)
+                    fail(function.name(), "Function '" + function.name().text() + "' must give a " + result + " on every path.");
+            } catch (FalconError error) {
+                errors.add(error);
+            } finally { scopes.pop(); }
         }
     }
 
@@ -51,23 +70,38 @@ final class Checker {
         boolean returns = false;
         for (Stmt statement : block.statements()) {
             if (returns) fail(statement.token(), "This statement cannot run because the preceding code always returns.");
-            returns = statement(statement);
+            try { returns = statement(statement); }
+            catch (FalconError error) { errors.add(error); returns = false; }
         }
         return returns;
     }
     private boolean statement(Stmt statement) {
         if (statement instanceof Block block) {
-            scopes.push(new HashMap<>()); boolean returns = statements(block); scopes.pop(); return returns;
+            scopes.push(new HashMap<>());
+            try { return statements(block); } finally { scopes.pop(); }
         }
         if (statement instanceof Binding binding) {
             Type actual = expression(binding.value()); valueType(binding.name(), actual);
             Type type = binding.annotation() == null ? actual : binding.annotation();
             valueType(binding.name(), type); compatible(binding.name(), type, actual);
-            declare(binding.name(), new Symbol(type, binding.mutable()));
+            declare(binding.name(), new Symbol(type, binding.mutable(), structNames.get(binding.value())));
         } else if (statement instanceof Assign assign) {
             Symbol symbol = resolve(assign.token());
             if (!symbol.mutable()) fail(assign.token(), "Cannot reassign '" + assign.token().text() + "'; it was declared with 'fix'.");
             compatible(assign.token(), symbol.type(), expression(assign.value()));
+        } else if (statement instanceof IndexAssign assign) {
+            Type target = expression(assign.target());
+            if (!target.isList() && target != Type.MAP) fail(assign.token(), "Index assignment requires a list or map.");
+            Type key = expression(assign.index());
+            require(assign.token(), target == Type.MAP ? Type.STRING : Type.INT, key);
+            Type actual = expression(assign.value());
+            compatible(assign.token(), target == Type.MAP ? Type.ANY : target.elementType(), actual);
+        } else if (statement instanceof FieldAssign assign) {
+            Type targetType = expression(assign.target());
+            String structName = structNames.get(assign.target());
+            if (targetType != Type.STRUCT || structName == null) fail(assign.token(), "Field assignment requires a struct value.");
+            StructField field = field(structName, assign.field());
+            compatible(assign.field(), field.type(), expression(assign.value()));
         } else if (statement instanceof ExprStmt expr) {
             expression(expr.value());
             if (!(expr.value() instanceof Call)) fail(expr.token(), "This expression has no effect; assign it or pass it to say(...).");
@@ -81,14 +115,26 @@ final class Checker {
         } else if (statement instanceof Each each) {
             Type iterable = expression(each.iterable());
             if (iterable != Type.RANGE && !iterable.isList()) fail(each.token(), "Expected range or list, got " + iterable + ".");
-            scopes.push(new HashMap<>()); declare(each.name(), new Symbol(iterable == Type.RANGE ? Type.INT : iterable.elementType(), false));
-            statements(each.body()); scopes.pop();
+            scopes.push(new HashMap<>());
+            try {
+                declare(each.name(), new Symbol(iterable == Type.RANGE ? Type.INT : iterable.elementType(), false));
+                statements(each.body());
+            } finally { scopes.pop(); }
         } else if (statement instanceof Give give) {
             Type actual = give.value() == null ? Type.VOID : expression(give.value());
             if (give.value() != null && actual == Type.VOID) fail(give.token(), "A void call has no value to return; use 'give' alone.");
             if (give.value() == null && result != Type.VOID)
                 fail(give.token(), "Expected " + result + ", got void. A newline ends the 'give' statement; put the returned value on the same line, for example: give 42.");
             compatible(give.token(), result, actual); return true;
+        } else if (statement instanceof TryCatch attempt) {
+            boolean bodyReturns = statement(attempt.body());
+            scopes.push(new HashMap<>());
+            boolean handlerReturns;
+            try {
+                declare(attempt.errorName(), new Symbol(Type.STRING, false));
+                handlerReturns = statements(attempt.handler());
+            } finally { scopes.pop(); }
+            return bodyReturns && handlerReturns;
         }
         return false;
     }
@@ -116,7 +162,16 @@ final class Checker {
             require(index.token(), target == Type.MAP ? Type.STRING : Type.INT, expression(index.index()));
             type = target == Type.STRING ? Type.STRING : target.isList() ? target.elementType() : Type.ANY;
         }
-        else if (expr instanceof Name name) type = resolve(name.token()).type();
+        else if (expr instanceof Field fieldExpr) {
+            Type target = expression(fieldExpr.target());
+            String structName = structNames.get(fieldExpr.target());
+            if (target != Type.STRUCT || structName == null) fail(fieldExpr.name(), "Field access requires a struct value.");
+            type = field(structName, fieldExpr.name()).type();
+        }
+        else if (expr instanceof Name name) {
+            Symbol symbol = resolve(name.token()); type = symbol.type();
+            if (symbol.structName() != null) structNames.put(expr, symbol.structName());
+        }
         else if (expr instanceof Unary unary) {
             Type operand = expression(unary.value());
             if (unary.token().text().equals("!")) { require(unary.token(), Type.BOOL, operand); type = Type.BOOL; }
@@ -144,6 +199,14 @@ final class Checker {
                 };
             }
         } else if (expr instanceof Call call) {
+            StructDecl struct = structs.get(call.target());
+            if (struct != null) {
+                if (call.arguments().size() != struct.fields().size())
+                    fail(call.token(), "Struct '" + call.target() + "' expects " + struct.fields().size() + " field values.");
+                for (int i = 0; i < call.arguments().size(); i++)
+                    compatible(call.arguments().get(i).token(), struct.fields().get(i).type(), expression(call.arguments().get(i)));
+                type = Type.STRUCT; structNames.put(call, call.target());
+            } else
             if (call.token().text().equals("say")) {
                 for (Expr arg : call.arguments()) printable(arg.token(), expression(arg));
                 type = Type.VOID;
@@ -170,6 +233,13 @@ final class Checker {
     private Symbol resolve(Token name) {
         for (Map<String, Symbol> scope : scopes) if (scope.containsKey(name.text())) return scope.get(name.text());
         throw new FalconError(name, "Unknown variable '" + name.text() + "'. I couldn't find it; check the spelling or declare it with 'var' or 'fix' first.");
+    }
+    private StructField field(String structName, Token fieldName) {
+        StructDecl struct = structs.get(structName);
+        if (struct == null) fail(fieldName, "Unknown struct '" + structName + "'.");
+        for (StructField field : struct.fields()) if (field.name().text().equals(fieldName.text())) return field;
+        fail(fieldName, "Struct '" + structName + "' has no field '" + fieldName.text() + "'.");
+        throw new IllegalStateException();
     }
     private void valueType(Token token, Type type) {
         if (type == Type.VOID) fail(token, "A variable or parameter cannot have type void.");

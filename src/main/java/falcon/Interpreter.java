@@ -12,6 +12,11 @@ import static falcon.Ast.*;
 /** Tree-walking reference backend. The checked AST is independent of this backend. */
 final class Interpreter {
     private record Range(long start, long end) {}
+    private static final class StructValue {
+        final String name;
+        final Map<String, Object> fields = new HashMap<>();
+        StructValue(String name) { this.name = name; }
+    }
     private static final class Cell {
         final Type type;
         Object value;
@@ -31,7 +36,8 @@ final class Interpreter {
         final Object value;
         Returned(Object value) { super(null, null, false, false); this.value = value; }
     }
-    private final Checker checker;
+    private Checker checker;
+    private Scope interactiveScope;
     private final PrintStream out;
     private final NativeRuntime runtime;
     private long remaining;
@@ -47,6 +53,11 @@ final class Interpreter {
         Function main = checker.functions.get("main");
         try { invoke(main, List.of(), main.name()); }
         finally { runtime.close(); }
+    }
+    void updateChecker(Checker checker) { this.checker = checker; }
+    void runInteractive(Stmt statement) {
+        if (interactiveScope == null) interactiveScope = new Scope(null);
+        execute(statement, interactiveScope);
     }
     private Object invoke(Function function, List<Object> args, Token callSite) {
         tick(callSite);
@@ -75,6 +86,15 @@ final class Interpreter {
             scope.values.put(binding.name().text(), new Cell(type, value));
         } else if (statement instanceof Assign assign) {
             Cell cell = scope.find(assign.token().text()); cell.value = coerce(cell.type, evaluate(assign.value(), scope));
+        } else if (statement instanceof IndexAssign assign) {
+            Object target = evaluate(assign.target(), scope);
+            Object index = evaluate(assign.index(), scope);
+            Object value = evaluate(assign.value(), scope);
+            Values.assign(target, index, value, assign.token());
+        } else if (statement instanceof FieldAssign assign) {
+            Object target = evaluate(assign.target(), scope);
+            Object value = evaluate(assign.value(), scope);
+            ((StructValue) target).fields.put(assign.field().text(), value);
         } else if (statement instanceof ExprStmt expr) evaluate(expr.value(), scope);
         else if (statement instanceof When when) {
             if ((boolean) evaluate(when.condition(), scope)) execute(when.yes(), scope);
@@ -106,6 +126,13 @@ final class Interpreter {
             }
         } else if (statement instanceof Give give) {
             throw new Returned(give.value() == null ? null : evaluate(give.value(), scope));
+        } else if (statement instanceof TryCatch attempt) {
+            try { execute(attempt.body(), scope); }
+            catch (FalconError error) {
+                Scope handler = new Scope(scope);
+                handler.values.put(attempt.errorName().text(), new Cell(Type.STRING, error.getMessage()));
+                execute(attempt.handler(), handler);
+            }
         }
     }
     private Object evaluate(Expr expr, Scope scope) {
@@ -118,6 +145,7 @@ final class Interpreter {
                 return values;
             }
             if (expr instanceof Index index) return Values.index(evaluate(index.target(), scope), evaluate(index.index(), scope), index.token());
+            if (expr instanceof Field field) return ((StructValue) evaluate(field.target(), scope)).fields.get(field.name().text());
             if (expr instanceof Name name) return scope.find(name.token().text()).value;
             if (expr instanceof Unary unary) {
                 Object value = evaluate(unary.value(), scope);
@@ -134,6 +162,12 @@ final class Interpreter {
             if (expr instanceof Call call) {
                 List<Object> args = new ArrayList<>();
                 for (Expr arg : call.arguments()) args.add(evaluate(arg, scope));
+                StructDecl struct = checker.structs.get(call.target());
+                if (struct != null) {
+                    StructValue value = new StructValue(call.target());
+                    for (int i = 0; i < args.size(); i++) value.fields.put(struct.fields().get(i).name().text(), args.get(i));
+                    return value;
+                }
                 if (call.token().text().equals("say")) {
                     out.println(args.stream().map(Values::display).collect(Collectors.joining(" "))); return null;
                 }

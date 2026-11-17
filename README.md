@@ -23,7 +23,7 @@ func square(n: int) -> int {
 
 Requires **JDK 17 or newer**. No Maven, Gradle, or external Java dependencies.
 
-Create a ready-to-use project in the current folder with `falcon setup`. It creates `src`, `examples`, `modules`, `stdlib`, `.vscode`, and a starter `main.falcon`; copies missing standard modules and module-install helpers; and points VS Code to the local standard library. Existing files and editor settings are preserved.
+Create a ready-to-use project in the current folder with `falcon setup`. It creates `src`, `examples`, `modules`, `stdlib`, `.vscode`, and a starter `main.falcon`; copies missing standard modules and module-install helpers; and points VS Code to the local standard library. Existing files and editor settings are preserved. Start an interactive session with `falcon repl`.
 The scripts discover a JDK through `JAVA_HOME`, `javac` on `PATH`, or your
 `%USERPROFILE%\.jdks` directory. They do not change system settings.
 
@@ -163,16 +163,18 @@ func main() {
 }
 ```
 
-Lists and maps hold heterogeneous `any` values, including `null` and nested
-containers. `any` is distinct from `number`: extract typed values with
+Homogeneous list literals infer their element type, and annotations such as
+`list<bool>` or `list<int>` enforce element types. Mixed lists use `any`.
+Lists and maps can also hold `null` and nested containers. `any` is distinct from
+`number`: extract typed values with
 `c.asNumber`, `c.asInt`, `c.asString`, `c.asList`, etc. These validate at runtime;
 use `text.toNumber` to parse a string. Indexing accepts integer list/string indices
-or string map keys. Bounds and missing keys are diagnosed. Use `c.set`/`c.put` to
-change elements; index assignment syntax is not implemented.
+or string map keys. Bounds and missing keys are diagnosed. Lists support
+`scores[0] = 12`; use `c.put` to update maps.
 
 Containers have reference semantics. `fix` prevents rebinding but does not freeze
 their contents. `each` iterates over a shallow snapshot of a list and gives each
-element type `any`. Equality compares container contents, with numeric int/float
+element its inferred type. Equality compares container contents, with numeric int/float
 comparison. Strings index by Unicode code point. Lists allow multiline elements
 and a trailing comma.
 
@@ -316,7 +318,7 @@ nesting is limited to 128 files. The entire imported graph is checked before
 execution. Errors include the actual module file and source location.
 
 Only the entry file needs `func main()`. A library's `main` is an ordinary function
-and is not automatically executed. Modules currently contain imports and functions;
+and is not automatically executed. Modules currently contain imports, functions, and structs;
 there are no top-level variables, initialization code, selective imports, private
 exports, package downloads, or registry resolution.
 
@@ -331,11 +333,12 @@ example.fc:3:5: error: Cannot reassign 'limit'; it was declared with 'fix'.
       ^
 ```
 
-Commands exit with `0` on success, `1` for a language/runtime error, and `2` for
-invalid CLI arguments or file read errors. The checker currently reports the
-first error. `check` never executes the program. `tokens` only runs the lexer.
+The checker reports multiple statement errors in one pass. Commands exit with
+`0` on success, `1` for a language/runtime error, and `2` for invalid CLI
+arguments or file read errors. `check` never executes the program. `tokens` only
+runs the lexer.
 
-Execution defaults to a million interpreter steps and a maximum of 256 nested
+Execution defaults to 100 million interpreter steps and a maximum of 256 nested
 function calls. A step is an interpreter operation, not a source line. Increase
 the step budget for larger programs:
 
@@ -358,8 +361,23 @@ delimiter: `.\falcon.ps1 run examples/stdlib.fc '--' hello`.
 
 Native calls have their own costs; the interpreter step budget does not bound
 time spent waiting on console input, sleeping, network requests, or large host
-operations. Standard-library failures currently stop execution; catchable errors
-are not yet part of the language.
+operations. Catch runtime errors with `try { ... } catch (error) { ... }`; the
+catch variable contains the error message.
+
+Simple structs can be declared with typed fields, constructed positionally, and
+read or updated by field:
+
+```fc
+struct Point {
+    x: int
+    y: int
+}
+func main() {
+    var point = Point(3, 4)
+    point.x = 8
+    say(point.x, point.y)
+}
+```
 
 ## VS Code
 
@@ -373,8 +391,9 @@ Tab selection, comments, brackets, and snippets. Install it into normal VS Code:
 
 Reload an already-open VS Code window after installation if needed. Checks support
 unsaved edits to saved `.fc` files and do not require `main` in library files.
-Imported dependencies use saved contents. The compiler reports the first error
-in each check. To open an extension development window instead:
+Imported dependencies use saved contents. The checker reports multiple
+statement errors where possible; parsing stops at the first syntax error. To
+open an extension development window instead:
 
 ```powershell
 code --extensionDevelopmentPath="$PWD\editors\vscode" "$PWD"
@@ -412,8 +431,7 @@ Falcon programs, and no speed advantage over Python is claimed. The JAR packages
 the Java implementation, not a compiled Falcon program.
 
 The first usable APIs for all seventeen standard modules are implemented. Next
-milestones include catchable errors, richer container typing, JVM bytecode
-generation, a language server, and package management. Classes, tooling plugins,
+milestones include JVM bytecode generation, a language server, and package management. Classes, tooling plugins,
 package downloads, and an online registry are not implemented yet.
 
 ## Desktop GUI

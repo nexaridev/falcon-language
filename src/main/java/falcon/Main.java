@@ -3,6 +3,8 @@ package falcon;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -24,6 +26,7 @@ public final class Main {
                     + "Usage: falcon <run|check|tokens> <file.fc> [--max-steps N]\n"
                     + "       falcon install <github-owner/repository>\n"
                     + "       falcon setup\n"
+                    + "       falcon repl\n"
                     + "       falcon cmd <command>\n"
                     + "       falcon --version\n"
                     + "       falcon check <file.fc> [--stdin] [--library]\n"
@@ -34,6 +37,10 @@ public final class Main {
             return 0;
         }
         if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.11.0"); return 0; }
+        if (args[0].equals("repl")) {
+            if (args.length != 1) { err.println("Usage: falcon repl"); return 2; }
+            return repl(in, out, err);
+        }
         if (args[0].equals("setup")) {
             if (args.length != 1) { err.println("Usage: falcon setup"); return 2; }
             return setup(Path.of("").toAbsolutePath().normalize(), out, err);
@@ -100,6 +107,10 @@ public final class Main {
             }
             Ast.Program program = loader.load(Path.of(args[1]), source);
             Checker checker = new Checker(); checker.check(program, !library);
+            if (!checker.errors.isEmpty()) {
+                for (FalconError diagnostic : checker.errors) err.println(loader.diagnostic(diagnostic, args[1], source));
+                return 1;
+            }
             if (args[0].equals("check")) out.println("OK: " + args[1]);
             else new Interpreter(checker, out, limit, in, arguments).run();
             return 0;
@@ -146,6 +157,45 @@ public final class Main {
         } catch (IOException | IllegalArgumentException | SecurityException e) {
             err.println("Falcon couldn't finish setting up this folder: " + e.getMessage());
             return 1;
+        }
+    }
+
+    private static int repl(InputStream in, PrintStream out, PrintStream err) {
+        out.println("Falcon interactive mode. Enter Falcon statements; use :quit to exit.");
+        var history = new java.util.ArrayList<String>();
+        Interpreter interpreter = null;
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        while (true) {
+            try {
+                out.print("fc> "); out.flush();
+                String line = reader.readLine();
+                if (line == null || line.strip().equals(":quit") || line.strip().equals(".exit")) return 0;
+                if (line.isBlank()) continue;
+                String statement = line;
+                if (!line.stripLeading().matches("(?s)(var|fix|if|when|while|each|give|try|\\{).*")
+                        && !line.stripLeading().matches("[A-Za-z_][A-Za-z_0-9]*(?:\\s*\\[[^]]+\\])?\\s*=.*")
+                        && !line.stripLeading().matches("[A-Za-z_][A-Za-z_0-9.]*\\s*\\(.*"))
+                    statement = "say(" + line + ")";
+                history.add(statement);
+                String source = "func main() {\n" + String.join("\n", history) + "\n}\n";
+                try {
+                    Ast.Program program = new Parser(new Lexer(source, "<repl>").scan()).parse();
+                    Checker checker = new Checker(); checker.check(program, true);
+                    if (!checker.errors.isEmpty()) {
+                        for (FalconError error : checker.errors) err.println(error.diagnostic("<repl>", source));
+                        history.remove(history.size() - 1); continue;
+                    }
+                    if (interpreter == null) interpreter = new Interpreter(checker, out, 100_000_000, in, List.of());
+                    else interpreter.updateChecker(checker);
+                    List<Ast.Stmt> statements = program.functions().get(0).body().statements();
+                    if (!statements.isEmpty()) interpreter.runInteractive(statements.get(statements.size() - 1));
+                } catch (FalconError error) {
+                    err.println(error.diagnostic("<repl>", source));
+                    history.remove(history.size() - 1);
+                }
+            } catch (IOException error) {
+                err.println("Couldn't read input: " + error.getMessage()); return 1;
+            }
         }
     }
 }

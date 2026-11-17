@@ -33,6 +33,7 @@ final class ModuleLoader {
         Path path = entry.toRealPath();
         visit(path, true, null);
         var functions = new ArrayList<Function>();
+        var structs = new ArrayList<StructDecl>();
         var loaded = new ArrayList<>(modules.values());
         loaded.addAll(standardModules.values());
         for (Module module : loaded) {
@@ -41,8 +42,13 @@ final class ModuleLoader {
                 functions.add(new Function(function.name(), function.parameters(), function.result(),
                         (Block) link(function.body(), module), module.namespace()));
             }
+            for (StructDecl struct : module.program().structs()) {
+                Token name = struct.name();
+                Token qualified = new Token(name.kind(), module.namespace() + name.text(), name.line(), name.column(), name.file());
+                structs.add(new StructDecl(qualified, struct.fields()));
+            }
         }
-        return new Program(List.copyOf(functions));
+        return new Program(List.copyOf(functions), List.of(), List.copyOf(structs));
     }
 
     private Module visit(Path path, boolean entry, Token importSite) throws IOException {
@@ -216,6 +222,8 @@ final class ModuleLoader {
             return new Binding(b.token(), b.name(), b.annotation(), link(b.value(), module), b.mutable());
         }
         if (stmt instanceof Assign a) return new Assign(a.token(), link(a.value(), module));
+        if (stmt instanceof IndexAssign a) return new IndexAssign(a.token(), link(a.target(), module), link(a.index(), module), link(a.value(), module));
+        if (stmt instanceof FieldAssign a) return new FieldAssign(a.token(), link(a.target(), module), a.field(), link(a.value(), module));
         if (stmt instanceof ExprStmt e) return new ExprStmt(e.token(), link(e.value(), module));
         if (stmt instanceof When w) return new When(w.token(), link(w.condition(), module), (Block) link(w.yes(), module), w.no() == null ? null : link(w.no(), module));
         if (stmt instanceof While w) return new While(w.token(), link(w.condition(), module), (Block) link(w.body(), module));
@@ -224,12 +232,15 @@ final class ModuleLoader {
             return new Each(e.token(), e.name(), link(e.iterable(), module), (Block) link(e.body(), module));
         }
         if (stmt instanceof Give g) return new Give(g.token(), g.value() == null ? null : link(g.value(), module));
+        if (stmt instanceof TryCatch t) return new TryCatch(t.token(), (Block) link(t.body(), module),
+                t.errorName(), (Block) link(t.handler(), module));
         throw new IllegalStateException("Unknown statement");
     }
 
     private Expr link(Expr expr, Module module) {
         if (expr instanceof ListExpr list) return new ListExpr(list.token(), list.elements().stream().map(e -> link(e, module)).toList());
         if (expr instanceof Index index) return new Index(index.token(), link(index.target(), module), link(index.index(), module));
+        if (expr instanceof Field field) return new Field(field.token(), link(field.target(), module), field.name());
         if (expr instanceof Call call) {
             String name = call.token().text();
             String target = name;
@@ -238,8 +249,10 @@ final class ModuleLoader {
                 String alias = name.substring(0, dot), member = name.substring(dot + 1);
                 Module imported = module.imports().get(alias);
                 if (imported == null) throw new FalconError(call.token(), "Unknown module '" + alias + "'; add a 'use' declaration.");
-                if (imported.program().functions().stream().noneMatch(f -> f.name().text().equals(member)))
-                    throw new FalconError(call.token(), "Module '" + alias + "' has no function '" + member + "'.");
+                boolean hasFunction = imported.program().functions().stream().anyMatch(f -> f.name().text().equals(member));
+                boolean hasStruct = imported.program().structs().stream().anyMatch(s -> s.name().text().equals(member));
+                if (!hasFunction && !hasStruct)
+                    throw new FalconError(call.token(), "Module '" + alias + "' has no function or struct '" + member + "'.");
                 target = imported.namespace() + member;
             } else if (!name.equals("say")) target = module.namespace() + name;
             return new Call(call.token(), call.arguments().stream().map(a -> link(a, module)).toList(), target);
