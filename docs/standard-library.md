@@ -1,6 +1,6 @@
 # Falcon standard library
 
-All thirteen modules below are implemented and included with Falcon. Their public APIs live in editable `stdlib/*.fc` files. No package installation is needed. Java provides typed host primitives; Falcon implements library algorithms and composition.
+All seventeen modules below are implemented and included with Falcon. Their public APIs live in editable `stdlib/*.fc` files. No package installation is needed. Java provides typed host primitives; Falcon implements library algorithms and composition.
 
 ## Imports and editing
 
@@ -12,7 +12,7 @@ use "std/io.fc" as io
 
 Named imports prefer a sibling `.fc` file, then the installed standard-library folder. `std/<name>.fc` explicitly selects the standard library; ordinary quoted paths stay local. Save changes in `stdlib/` and rerun with the installed launcher: no Java rebuild is needed. New `.fc` modules in that folder are discovered automatically. Standard modules may import sibling standard modules; cycles are rejected. `native/<name>.fc` imports internal runtime primitives.
 
-The standalone JAR embeds a source copy, refreshed by `build.ps1`. VS Code checks and completions use `falcon.stdlibPath` when configured, otherwise its packaged source copy. Repackage the extension to distribute updated sources.
+The standalone JAR embeds a source copy, refreshed by `build.ps1`. VS Code checks and completions use `falcon.stdlibPath` when configured, otherwise its packaged source copy. Repackage the extension to distribute updated sources. See [additional module details](extra-standard-modules.md).
 
 ## Numeric and container types
 

@@ -1,0 +1,6 @@
+// gzip strings use Base64 text; zip/unzip operate on filesystem paths.
+use "native/compression.fc" as native
+func gzip(value: string) -> string { give native.gzip(value) }
+func gunzip(value: string) -> string { give native.gunzip(value) }
+func zip(source: string, archive: string) { native.zip(source, archive) }
+func unzip(archive: string, destination: string) { native.unzip(archive, destination) }

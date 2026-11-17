@@ -1,0 +1,11 @@
+use crypto
+use regex
+use compression
+use cmd
+
+func main() {
+    say(crypto.sha256("hello"))
+    say(regex.find("abc123", "[0-9]+"))
+    say(compression.gunzip(compression.gzip("Falcon")))
+    say(cmd.which("java") != "")
+}

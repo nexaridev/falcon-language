@@ -1,0 +1,8 @@
+// Run system commands and inspect their output.
+use "native/cmd.fc" as native
+func run(command: string, timeoutMs: int) -> map {
+    give native.run(command, timeoutMs)
+}
+func which(executable: string) -> string {
+    give native.which(executable)
+}

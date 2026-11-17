@@ -1,0 +1,7 @@
+// Java regular expressions. find returns the first match or an empty string.
+use "native/regex.fc" as native
+func matches(value: string, pattern: string) -> bool { give native.matches(value, pattern) }
+func find(value: string, pattern: string) -> string { give native.find(value, pattern) }
+func findAll(value: string, pattern: string) -> list { give native.findAll(value, pattern) }
+func replace(value: string, pattern: string, replacement: string) -> string { give native.replace(value, pattern, replacement) }
+func split(value: string, pattern: string) -> list { give native.split(value, pattern) }

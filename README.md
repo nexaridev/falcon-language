@@ -1,7 +1,7 @@
 # Falcon (.fc)
 
 Falcon is a small, statically checked programming language implemented in Java.
-Version 0.7 is a working reference interpreter with a separate lexer, parser,
+Version 0.8 is a working reference interpreter with a separate lexer, parser,
 abstract syntax tree, semantic checker, and execution backend.
 
 ```fc
@@ -232,11 +232,13 @@ give (
 
 ## Modules
 
-Each `.fc` file is a module. Named imports first look for a sibling file, then
-fall back to the installed standard library. All thirteen modules are available:
+Each `.fc` or `.falcon` file is a module. Named imports first look for a sibling file, then
+fall back to the installed standard library. All seventeen modules are available:
 `io`, `math`, `text`, `collections`, `fs`, `path`, `random`, `time`, `json`, `os`,
-`test`, `http`, and `gui`. No downloads are needed. See the
+`test`, `http`, `gui`, `cmd`, `crypto`, `regex`, and `compression`. No downloads are needed. See the
 [standard-library API](docs/standard-library.md) for signatures and behavior.
+
+Falcon's VS Code extension includes a blue falcon icon for both extensions. Select **Falcon File Icons** using `Preferences: File Icon Theme` to apply Falcon's icon across Explorer and open tabs.
 For example:
 
 ```fc
@@ -407,7 +409,7 @@ This backend walks the syntax tree. It does **not** generate JVM bytecode for
 Falcon programs, and no speed advantage over Python is claimed. The JAR packages
 the Java implementation, not a compiled Falcon program.
 
-The first usable APIs for all thirteen standard modules are implemented. Next
+The first usable APIs for all seventeen standard modules are implemented. Next
 milestones include catchable errors, richer container typing, JVM bytecode
 generation, a language server, and package management. Classes, tooling plugins,
 package downloads, and an online registry are not implemented yet.

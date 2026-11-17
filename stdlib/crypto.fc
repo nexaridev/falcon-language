@@ -1,0 +1,12 @@
+// Hashes, encoding helpers, and authenticated AES-GCM encryption.
+use "native/crypto.fc" as native
+func sha256(value: string) -> string { give native.sha256(value) }
+func hmacSha256(value: string, key: string) -> string { give native.hmacSha256(value, key) }
+func secureToken(bytes: int) -> string { give native.secureToken(bytes) }
+func md5(value: string) -> string { give native.md5(value) }
+func base64Encode(value: string) -> string { give native.base64Encode(value) }
+func base64Decode(value: string) -> string { give native.base64Decode(value) }
+func hexEncode(value: string) -> string { give native.hexEncode(value) }
+func hexDecode(value: string) -> string { give native.hexDecode(value) }
+func encrypt(value: string, key: string) -> string { give native.encrypt(value, key) }
+func decrypt(value: string, key: string) -> string { give native.decrypt(value, key) }

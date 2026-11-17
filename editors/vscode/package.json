@@ -2,7 +2,7 @@
   "name": "falcon-language",
   "displayName": "Falcon Language",
   "description": "Falcon syntax highlighting, live compiler diagnostics, completions, and snippets.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "falcon-local",
   "private": true,
   "engines": { "vscode": "^1.85.0" },
@@ -41,15 +41,17 @@
     "languages": [{
       "id": "falcon",
       "aliases": ["Falcon", "falcon"],
-      "extensions": [".fc"],
-      "configuration": "./language-configuration.json"
+      "extensions": [".fc", ".falcon"],
+      "configuration": "./language-configuration.json",
+      "icon": { "light": "./icons/falcon-blue.svg", "dark": "./icons/falcon-blue.svg" }
     }],
     "grammars": [{
       "language": "falcon",
       "scopeName": "source.falcon",
       "path": "./syntaxes/falcon.tmLanguage.json"
     }],
-    "snippets": [{ "language": "falcon", "path": "./snippets/falcon.json" }]
+    "snippets": [{ "language": "falcon", "path": "./snippets/falcon.json" }],
+    "iconThemes": [{ "id": "falcon-file-icons", "label": "Falcon File Icons", "path": "./icons/falcon-file-icon-theme.json" }]
   }
 }
 

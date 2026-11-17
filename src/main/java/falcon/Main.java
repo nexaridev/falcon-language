@@ -19,9 +19,10 @@ public final class Main {
 
     static int cli(String[] args, InputStream in, PrintStream out, PrintStream err) {
         if (args.length == 0 || args[0].equals("--help") || args[0].equals("help")) {
-            out.println("Falcon 0.7.0 — Java reference interpreter\n"
+            out.println("Falcon 0.8.0 — Java reference interpreter\n"
                     + "Usage: falcon <run|check|tokens> <file.fc> [--max-steps N]\n"
                     + "       falcon install <github-owner/repository>\n"
+                    + "       falcon cmd <command>\n"
                     + "       falcon --version\n"
                     + "       falcon check <file.fc> [--stdin] [--library]\n"
                     + "       falcon run <file.fc> [--max-steps N] [-- program arguments...]\n"
@@ -30,7 +31,17 @@ public final class Main {
                     + "tokens Print lexer tokens");
             return 0;
         }
-        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.7.0"); return 0; }
+        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.8.0"); return 0; }
+        if (args[0].equals("cmd")) {
+            if (args.length != 2) { err.println("Usage: falcon cmd <command>"); return 2; }
+            boolean windows = System.getProperty("os.name").toLowerCase().contains("win");
+            try {
+                Process process = (windows ? new ProcessBuilder("cmd.exe", "/d", "/s", "/c", args[1])
+                        : new ProcessBuilder("/bin/sh", "-c", args[1])).inheritIO().start();
+                return process.waitFor();
+            } catch (IOException e) { err.println("Could not start that command: " + e.getMessage()); return 2; }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); err.println("Command interrupted."); return 1; }
+        }
         if (args[0].equals("install")) {
             if (args.length != 2) { err.println("Usage: falcon install owner/repository"); return 2; }
             Path script = Path.of("modules", "install.ps1").toAbsolutePath().normalize();

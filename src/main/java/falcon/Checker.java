@@ -140,7 +140,7 @@ final class Checker {
             } else {
                 Function function = functions.get(call.target());
                 if (function == null) function = StandardLibrary.function(call.target());
-                if (function == null) throw new FalconError(call.token(), "Unknown function '" + call.token().text() + "'.");
+                if (function == null) throw new FalconError(call.token(), "Unknown function '" + call.token().text() + "'. I couldn't find it; check the spelling or import its module.");
                 if (function.parameters().size() != call.arguments().size())
                     fail(call.token(), "Expected " + function.parameters().size() + " arguments, got " + call.arguments().size() + ".");
                 for (int i = 0; i < call.arguments().size(); i++)
@@ -159,7 +159,7 @@ final class Checker {
     }
     private Symbol resolve(Token name) {
         for (Map<String, Symbol> scope : scopes) if (scope.containsKey(name.text())) return scope.get(name.text());
-        throw new FalconError(name, "Unknown variable '" + name.text() + "'. Declare it with 'var' or 'fix' first.");
+        throw new FalconError(name, "Unknown variable '" + name.text() + "'. I couldn't find it; check the spelling or declare it with 'var' or 'fix' first.");
     }
     private void valueType(Token token, Type type) {
         if (type == Type.VOID) fail(token, "A variable or parameter cannot have type void.");

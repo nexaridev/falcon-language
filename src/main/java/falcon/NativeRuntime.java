@@ -1,6 +1,8 @@
 package falcon;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
@@ -16,12 +18,26 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.regex.Pattern;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import javax.crypto.Mac;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 /** Per-program runtime state and host operations. Never used during checking. */
 final class NativeRuntime implements AutoCloseable {
@@ -50,6 +66,10 @@ final class NativeRuntime implements AutoCloseable {
                 if (images == null) images = new ImageRuntime();
                 return images.invoke(operation, args);
             }
+            if (operation.startsWith("cmd.")) return command(operation, args);
+            if (operation.startsWith("crypto.")) return crypto(operation, args);
+            if (operation.startsWith("regex.")) return regex(operation, args);
+            if (operation.startsWith("compression.")) return compression(operation, args);
             if (operation.startsWith("gui.")) {
                 if (gui == null) gui = new GuiRuntime();
                 return gui.invoke(operation, args);
@@ -60,6 +80,8 @@ final class NativeRuntime implements AutoCloseable {
             Thread.currentThread().interrupt(); throw new FalconError(site, operation + ": operation interrupted.");
         } catch (IOException | IllegalArgumentException | ArithmeticException | SecurityException e) {
             throw new FalconError(site, operation + ": " + e.getMessage());
+        } catch (Exception e) {
+            throw new FalconError(site, operation + ": " + (e.getMessage() == null ? "the operation could not be completed." : e.getMessage()));
         }
     }
 
@@ -204,6 +226,59 @@ final class NativeRuntime implements AutoCloseable {
     }
 
     private void loadLine() throws IOException { if (!loaded) { pending = input.readLine(); loaded = true; } }
+    private Object command(String op, List<Object> a) throws IOException, InterruptedException {
+        if (op.equals("cmd.which")) {
+            String name = s(a, 0);
+            if (!name.matches("[A-Za-z0-9_.-]+")) throw new IllegalArgumentException("Command name may only contain letters, digits, dot, underscore, and dash.");
+            boolean windows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
+            ProcessBuilder pb = windows ? new ProcessBuilder("where.exe", name) : new ProcessBuilder("which", name);
+            try { Process p=pb.start(); byte[] out=p.getInputStream().readAllBytes(); p.waitFor(); return p.exitValue()==0?new String(out,StandardCharsets.UTF_8).lines().findFirst().orElse(""):""; }
+            catch (IOException e) { return ""; }
+        }
+        String value=s(a,0); long timeout=i(a,1);
+        if(timeout<1 || timeout>300000) throw new IllegalArgumentException("Command timeout must be from 1 to 300000 milliseconds.");
+        boolean windows=System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
+        Process process=(windows?new ProcessBuilder("cmd.exe","/d","/s","/c",value):new ProcessBuilder("/bin/sh","-c",value)).start();
+        process.getOutputStream().close();
+        var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var stdout=pool.submit(()->readLimited(process.getInputStream()));
+            var stderr=pool.submit(()->readLimited(process.getErrorStream()));
+            boolean finished=process.waitFor(timeout,java.util.concurrent.TimeUnit.MILLISECONDS);
+            if(!finished){process.destroyForcibly(); return commandResult(-1,"","Command timed out after "+timeout+" ms.",true);}
+            return commandResult(process.exitValue(),stdout.get(2,java.util.concurrent.TimeUnit.SECONDS),stderr.get(2,java.util.concurrent.TimeUnit.SECONDS),false);
+        } catch(java.util.concurrent.ExecutionException|java.util.concurrent.TimeoutException e){process.destroyForcibly(); throw new IOException("Could not collect command output.",e);}
+        finally {pool.shutdownNow();}
+    }
+    private static String readLimited(InputStream stream) throws IOException { byte[] bytes=stream.readNBytes(1024*1024+1); if(bytes.length>1024*1024) throw new IOException("Command output exceeded 1 MiB."); return new String(bytes,StandardCharsets.UTF_8); }
+    private static Map<String,Object> commandResult(int exit,String stdout,String stderr,boolean timedOut){var result=new LinkedHashMap<String,Object>();result.put("exit_code",(long)exit);result.put("stdout",stdout);result.put("stderr",stderr);result.put("timed_out",timedOut);return result;}
+    private Object crypto(String op,List<Object>a) throws Exception {
+        String value=s(a,0);
+        return switch(op){
+            case "crypto.sha256","crypto.md5" -> HexFormat.of().formatHex(MessageDigest.getInstance(op.endsWith("md5")?"MD5":"SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+            case "crypto.hmacSha256" -> { Mac mac=Mac.getInstance("HmacSHA256");mac.init(new SecretKeySpec(s(a,1).getBytes(StandardCharsets.UTF_8),"HmacSHA256"));yield HexFormat.of().formatHex(mac.doFinal(value.getBytes(StandardCharsets.UTF_8))); }
+            case "crypto.secureToken" -> { long count=i(a,0);if(count<16||count>128)throw new IllegalArgumentException("Secure token size must be 16–128 random bytes.");byte[] bytes=new byte[(int)count];new SecureRandom().nextBytes(bytes);yield Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }
+            case "crypto.base64Encode" -> Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+            case "crypto.base64Decode" -> new String(Base64.getDecoder().decode(value),StandardCharsets.UTF_8);
+            case "crypto.hexEncode" -> HexFormat.of().formatHex(value.getBytes(StandardCharsets.UTF_8));
+            case "crypto.hexDecode" -> new String(HexFormat.of().parseHex(value),StandardCharsets.UTF_8);
+            case "crypto.encrypt" -> encrypt(value,s(a,1));
+            case "crypto.decrypt" -> decrypt(value,s(a,1));
+            default -> throw new IllegalArgumentException("Unknown crypto operation.");
+        };
+    }
+    private static byte[] aesKey(String key) throws Exception {return MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));}
+    private static String encrypt(String value,String key) throws Exception {byte[] iv=new byte[12];new SecureRandom().nextBytes(iv);Cipher c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,new SecretKeySpec(aesKey(key),"AES"),new GCMParameterSpec(128,iv));byte[] cipher=c.doFinal(value.getBytes(StandardCharsets.UTF_8));byte[] result=Arrays.copyOf(iv,iv.length+cipher.length);System.arraycopy(cipher,0,result,iv.length,cipher.length);return Base64.getEncoder().encodeToString(result);}
+    private static String decrypt(String value,String key) throws Exception {byte[] data=Base64.getDecoder().decode(value);if(data.length<29)throw new IllegalArgumentException("Encrypted value is malformed.");Cipher c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(aesKey(key),"AES"),new GCMParameterSpec(128,data,0,12));return new String(c.doFinal(data,12,data.length-12),StandardCharsets.UTF_8);}
+    private Object regex(String op,List<Object>a){String value=s(a,0),pattern=s(a,1);Pattern compiled;try{compiled=Pattern.compile(pattern);}catch(java.util.regex.PatternSyntaxException e){throw new IllegalArgumentException("That pattern is not valid: "+e.getDescription()+".");}return switch(op){case "regex.matches"->compiled.matcher(value).matches();case "regex.find"->{var m=compiled.matcher(value);yield m.find()?m.group():"";}case "regex.findAll"->{var result=new ArrayList<Object>();var m=compiled.matcher(value);while(m.find())result.add(m.group());yield result;}case "regex.replace"->compiled.matcher(value).replaceAll(s(a,2));case "regex.split"->new ArrayList<>(Arrays.asList(compiled.split(value)));default->throw new IllegalArgumentException("Unknown regex operation.");};}
+    private Object compression(String op,List<Object>a)throws IOException{
+        if(op.equals("compression.gzip")){var out=new ByteArrayOutputStream();try(var gzip=new GZIPOutputStream(out)){gzip.write(s(a,0).getBytes(StandardCharsets.UTF_8));}return Base64.getEncoder().encodeToString(out.toByteArray());}
+        if(op.equals("compression.gunzip")){byte[] zipped=Base64.getDecoder().decode(s(a,0));try(var in=new GZIPInputStream(new ByteArrayInputStream(zipped))){return new String(in.readNBytes(16*1024*1024+1),StandardCharsets.UTF_8);}}
+        Path first=Path.of(s(a,0)).toAbsolutePath().normalize();Path second=Path.of(s(a,1)).toAbsolutePath().normalize();
+        if(op.equals("compression.zip")){try(var out=new ZipOutputStream(Files.newOutputStream(second))){Path base=Files.isDirectory(first)?first:first.getParent();try(var paths=Files.walk(first)){for(Path file:paths.filter(Files::isRegularFile).toList()){String name=base.relativize(file).toString().replace('\\','/');out.putNextEntry(new ZipEntry(name));Files.copy(file,out);out.closeEntry();}}}return null;}
+        if(op.equals("compression.unzip")){Files.createDirectories(second);int count=0;try(var zip=new ZipInputStream(Files.newInputStream(first))){ZipEntry entry;while((entry=zip.getNextEntry())!=null){if(++count>10000)throw new IOException("Archive has too many entries.");Path target=second.resolve(entry.getName()).normalize();if(!target.startsWith(second))throw new IOException("Archive contains an unsafe path.");if(entry.isDirectory())Files.createDirectories(target);else{Files.createDirectories(target.getParent());try(var out=Files.newOutputStream(target)){zip.transferTo(out);}}zip.closeEntry();}}return null;}
+        throw new IllegalArgumentException("Unknown compression operation.");
+    }
     private String readLine() throws IOException {
         loadLine(); if (pending == null) throw new IllegalArgumentException("End of input; use io.hasInput() to check for more lines.");
         String result = pending; pending = null; loaded = false; return result;
