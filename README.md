@@ -1,7 +1,7 @@
 # Falcon (.fc)
 
 Falcon is a small, statically checked programming language implemented in Java.
-Version 0.4 is a working reference interpreter with a separate lexer, parser,
+Version 0.7 is a working reference interpreter with a separate lexer, parser,
 abstract syntax tree, semantic checker, and execution backend.
 
 ```fc
@@ -32,6 +32,8 @@ The scripts discover a JDK through `JAVA_HOME`, `javac` on `PATH`, or your
 .\falcon.ps1 tokens examples/hello.fc
 .\build.ps1 -Test
 ```
+
+Quick install from GitHub: `.\install.ps1`. On Linux/macOS, run `bash install.sh`. Install a public Falcon module in the current project with `falcon install owner/repository`; modules need `module.json` with a relative `.fc` `main` path, then import with `use "module-name" as alias`. VS Code checks files as you type and shows compiler errors with red underlines.
 
 The launcher builds if the JAR is missing. After editing the Java implementation,
 run `.\build.ps1` to rebuild. Editing `.fc` programs does not require a rebuild.
