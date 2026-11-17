@@ -1,0 +1,10 @@
+use io
+use text
+use math
+
+func main() {
+    fix name = io.prompt("Your name: ")
+    fix value: number = text.toNumber(io.prompt("A number: "))
+    say("Hello, " + name)
+    say("Its square is", math.square(value))
+}

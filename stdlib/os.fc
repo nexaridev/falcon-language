@@ -1,0 +1,28 @@
+// Falcon standard library: os
+use "native/os.fc" as native
+
+func args() -> list {
+    give native.args()
+}
+
+func cwd() -> string {
+    give native.cwd()
+}
+
+func env(name: string) -> string {
+    give native.env(name)
+}
+
+func hasEnv(name: string) -> bool {
+    give native.hasEnv(name)
+}
+
+func platform() -> string {
+    give native.platform()
+}
+
+func home() -> string {
+    give native.home()
+}
+
+

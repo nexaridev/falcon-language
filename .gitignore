@@ -1,0 +1,10 @@
+/build/
+*.class
+*.vsix
+.idea/
+*.iml
+/editors/vscode/runtime/
+/editors/vscode/stdlib/*.fc
+/modules/*/
+!/modules/install.ps1
+!/modules/install.sh

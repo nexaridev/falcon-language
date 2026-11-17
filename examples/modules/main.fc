@@ -1,0 +1,8 @@
+use math
+use "lib/greetings.fc" as greetings
+
+func main() {
+    say(greetings.hello("Falcon"))
+    say("5 squared:", math.square(5))
+    say("6 factorial:", math.factorial(6))
+}

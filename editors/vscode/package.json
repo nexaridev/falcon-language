@@ -1,0 +1,55 @@
+{
+  "name": "falcon-language",
+  "displayName": "Falcon Language",
+  "description": "Falcon syntax highlighting, live compiler diagnostics, completions, and snippets.",
+  "version": "0.7.0",
+  "publisher": "falcon-local",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:falcon"],
+  "capabilities": { "untrustedWorkspaces": { "supported": false } },
+  "contributes": {
+    "keybindings": [{
+      "command": "acceptSelectedSuggestion",
+      "key": "tab",
+      "when": "editorTextFocus && editorLangId == falcon && suggestWidgetVisible && suggestWidgetHasFocusedSuggestion"
+    }],
+    "configurationDefaults": {
+      "[falcon]": {
+        "editor.tabCompletion": "on",
+        "editor.snippetSuggestions": "top",
+        "editor.suggestSelection": "first",
+        "editor.quickSuggestions": { "other": "on", "comments": "off", "strings": "off" },
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.acceptSuggestionOnEnter": "on",
+        "editor.insertSpaces": true,
+        "editor.tabSize": 4
+      }
+    },
+    "configuration": {
+      "title": "Falcon",
+      "properties": {
+        "falcon.stdlibPath": { "type": "string", "default": "", "scope": "machine", "description": "Editable Falcon standard-library folder. Empty uses the .fc sources bundled with the extension." },
+        "falcon.javaPath": { "type": "string", "default": "", "scope": "machine", "description": "Java 17+ executable. Empty discovers JAVA_HOME, PATH, or an installed JDK." },
+        "falcon.compilerPath": { "type": "string", "default": "", "scope": "machine", "description": "Optional Falcon JAR override. Empty uses the compiler bundled with this extension." },
+        "falcon.diagnostics.enabled": { "type": "boolean", "default": true, "description": "Check Falcon files while editing and show red error underlines." }
+      }
+    },
+    "commands": [{ "command": "falcon.checkDocument", "title": "Falcon: Check Current File" }],
+    "languages": [{
+      "id": "falcon",
+      "aliases": ["Falcon", "falcon"],
+      "extensions": [".fc"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "falcon",
+      "scopeName": "source.falcon",
+      "path": "./syntaxes/falcon.tmLanguage.json"
+    }],
+    "snippets": [{ "language": "falcon", "path": "./snippets/falcon.json" }]
+  }
+}
+

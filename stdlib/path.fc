@@ -1,0 +1,32 @@
+// Falcon standard library: path
+use "native/path.fc" as native
+
+func join(first: string, second: string) -> string {
+    give native.join(first, second)
+}
+
+func normalize(value: string) -> string {
+    give native.normalize(value)
+}
+
+func absolute(value: string) -> string {
+    give native.absolute(value)
+}
+
+func filename(value: string) -> string {
+    give native.filename(value)
+}
+
+func dirname(value: string) -> string {
+    give native.dirname(value)
+}
+
+func extension(value: string) -> string {
+    give native.extension(value)
+}
+
+func stem(value: string) -> string {
+    give native.stem(value)
+}
+
+

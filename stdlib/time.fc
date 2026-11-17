@@ -1,0 +1,20 @@
+// Falcon standard library: time
+use "native/time.fc" as native
+
+func now() -> int {
+    give native.now()
+}
+
+func monotonic() -> float {
+    give native.monotonic()
+}
+
+func sleep(milliseconds: int) {
+    native.sleep(milliseconds)
+}
+
+func iso(milliseconds: int) -> string {
+    give native.iso(milliseconds)
+}
+
+

@@ -1,0 +1,10 @@
+func square(n: int) -> int {
+    give n * n
+}
+
+func factorial(n: int) -> int {
+    when (n <= 1) {
+        give 1
+    }
+    give n * factorial(n - 1)
+}

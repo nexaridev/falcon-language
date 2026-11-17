@@ -1,0 +1,158 @@
+package falcon;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import static falcon.Ast.*;
+
+/** Typed native bridge. Public library implementations live in stdlib/*.fc. */
+final class StandardLibrary {
+    private static final Map<String, Function> FUNCTIONS = new LinkedHashMap<>();
+    static {
+        // Native bridges for optional modules; public sources are outside stdlib.
+        define("pillow.create int imageWidth:int imageHeight:int color:string");
+        define("pillow.open int filename:string");
+        define("pillow.save void image:int filename:string format:string");
+        define("pillow.width int image:int");
+        define("pillow.height int image:int");
+        define("pillow.close void image:int");
+        define("pillow.copy int image:int");
+        define("pillow.resize int image:int targetWidth:int targetHeight:int");
+        define("pillow.crop int image:int left:int top:int right:int bottom:int");
+        define("pillow.rotate int image:int degrees:int");
+        define("pillow.flip int image:int axis:string");
+        define("pillow.grayscale int image:int");
+        define("pillow.blur int image:int");
+        define("pillow.brightness int image:int factor:number");
+        define("pillow.getPixel string image:int x:int y:int");
+        define("pillow.putPixel void image:int x:int y:int color:string");
+        define("pillow.paste void image:int source:int x:int y:int");
+        define("pillow.drawText void image:int x:int y:int value:string size:int color:string");
+        define("pillow.rectangle void image:int left:int top:int right:int bottom:int color:string");
+        define("pillow.ellipse void image:int left:int top:int right:int bottom:int color:string");
+        define("pillow.line void image:int x1:int y1:int x2:int y2:int color:string");
+        define("telebot.create int token:string");
+        define("telebot.close void bot:int");
+        define("telebot.setLogging void bot:int level:string filename:string");
+        define("telebot.log void bot:int value:string");
+        define("telebot.call map bot:int method:string parameters:map");
+        define("telebot.poll map bot:int timeoutSeconds:int");
+        define("telebot.upload map bot:int method:string parameters:map field:string filename:string");
+        define("gui.window int title:string width:int height:int");
+        define("gui.label int window:int value:string");
+        define("gui.input int window:int value:string");
+        define("gui.button int window:int caption:string event:string");
+        define("gui.text string control:int");
+        define("gui.setText void control:int value:string");
+        define("gui.setEnabled void control:int enabled:bool");
+        define("gui.show void window:int");
+        define("gui.isOpen bool window:int");
+        define("gui.nextEvent string window:int");
+        define("gui.close void window:int");
+        define("gui.message void title:string message:string");
+        define("gui.confirm bool title:string message:string");
+        define("io.print void value:any");
+        define("io.println void value:any");
+        define("io.readLine string");
+        define("io.hasInput bool");
+        define("io.prompt string message:string");
+        define("math.requireFactorialInput void value:int");
+        define("math.sqrt float value:number");
+        define("math.pow float value:number other:number");
+        define("math.floor float value:number");
+        define("math.ceil float value:number");
+        define("math.round int value:number");
+        define("math.toInt int value:number");
+        define("math.pi float");
+        define("text.length int value:string");
+        define("text.trim string value:string");
+        define("text.lower string value:string");
+        define("text.upper string value:string");
+        define("text.contains bool value:string part:string");
+        define("text.startsWith bool value:string part:string");
+        define("text.endsWith bool value:string part:string");
+        define("text.replace string value:string oldText:string newText:string");
+        define("text.substring string value:string start:int end:int");
+        define("text.split list value:string separator:string");
+        define("text.join string items:list separator:string");
+        define("text.toInt int value:string");
+        define("text.toFloat float value:string");
+        define("text.toNumber number value:string");
+        define("text.from string value:any");
+        define("collections.newList list");
+        define("collections.newMap map");
+        define("collections.size int value:any");
+        define("collections.push void items:list value:any");
+        define("collections.get any items:list index:int");
+        define("collections.set void items:list index:int value:any");
+        define("collections.remove any items:list index:int");
+        define("collections.put void entries:map key:string value:any");
+        define("collections.lookup any entries:map key:string");
+        define("collections.hasKey bool entries:map key:string");
+        define("collections.erase bool entries:map key:string");
+        define("collections.keys list entries:map");
+        define("collections.values list entries:map");
+        define("collections.compareNumbers int left:number right:number");
+        define("collections.asNumber number value:any");
+        define("collections.asInt int value:any");
+        define("collections.asFloat float value:any");
+        define("collections.asString string value:any");
+        define("collections.asBool bool value:any");
+        define("collections.asList list value:any");
+        define("collections.asMap map value:any");
+        define("collections.isNull bool value:any");
+        define("collections.kind string value:any");
+        define("fs.readText string filename:string");
+        define("fs.writeText void filename:string content:string");
+        define("fs.appendText void filename:string content:string");
+        define("fs.exists bool filename:string");
+        define("fs.isFile bool filename:string");
+        define("fs.isDir bool filename:string");
+        define("fs.mkdir void directory:string");
+        define("fs.listDir list directory:string");
+        define("fs.remove bool filename:string");
+        define("path.join string first:string second:string");
+        define("path.normalize string value:string");
+        define("path.absolute string value:string");
+        define("path.filename string value:string");
+        define("path.dirname string value:string");
+        define("path.extension string value:string");
+        define("path.stem string value:string");
+        define("random.seed void value:int");
+        define("random.next float");
+        define("random.integer int minimum:int maximum:int");
+        define("random.choice any items:list");
+        define("time.now int");
+        define("time.monotonic float");
+        define("time.sleep void milliseconds:int");
+        define("time.iso string milliseconds:int");
+        define("json.parse any source:string");
+        define("json.stringify string value:any");
+        define("os.args list");
+        define("os.cwd string");
+        define("os.env string name:string");
+        define("os.hasEnv bool name:string");
+        define("os.platform string");
+        define("os.home string");
+        define("test.fail void message:string");
+        define("http.get map url:string");
+        define("http.request map method:string url:string body:string timeoutMs:int");
+    }
+    private static void define(String signature) {
+        String[] parts = signature.split(" ");
+        String[] qualified = parts[0].split("\\.");
+        String namespace = "native::" + qualified[0] + "::";
+        Token token = new Token(Token.Kind.NAME, qualified[1], 1, 1, "native/" + qualified[0] + ".fc");
+        var params = new java.util.ArrayList<Parameter>();
+        for (int i = 2; i < parts.length; i++) {
+            String[] parameter = parts[i].split(":");
+            params.add(new Parameter(new Token(Token.Kind.NAME, parameter[0], 1, 1), Type.valueOf(parameter[1].toUpperCase(java.util.Locale.ROOT))));
+        }
+        Function function = new Function(token, List.copyOf(params), Type.valueOf(parts[1].toUpperCase(java.util.Locale.ROOT)), new Block(token, List.of()), namespace);
+        FUNCTIONS.put(function.key(), function);
+    }
+    static Function function(String key) { return FUNCTIONS.get(key); }
+    static Program module(String name) {
+        return new Program(FUNCTIONS.values().stream().filter(f -> f.namespace().equals("native::" + name + "::")).toList());
+    }
+}

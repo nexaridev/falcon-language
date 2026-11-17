@@ -1,0 +1,62 @@
+// Falcon's math standard library. Java supplies only runtime primitives.
+use "native/math.fc" as native
+
+func factorial(value: int) -> int {
+    native.requireFactorialInput(value)
+    var result = 1
+    each (i in 2..(value + 1)) {
+        result = result * i
+    }
+    give result
+}
+
+func square(value: number) -> number {
+    give value * value
+}
+
+func abs(value: number) -> number {
+    if (value < 0) { give -value }
+    give value
+}
+
+func min(value: number, other: number) -> number {
+    if (value < other) { give value }
+    give other
+}
+
+func max(value: number, other: number) -> number {
+    if (value > other) { give value }
+    give other
+}
+
+func sqrt(value: number) -> float {
+    give native.sqrt(value)
+}
+
+func pow(value: number, other: number) -> float {
+    give native.pow(value, other)
+}
+
+func floor(value: number) -> float {
+    give native.floor(value)
+}
+
+func ceil(value: number) -> float {
+    give native.ceil(value)
+}
+
+func round(value: number) -> int {
+    give native.round(value)
+}
+
+func toInt(value: number) -> int {
+    give native.toInt(value)
+}
+
+func pi() -> float {
+    give native.pi()
+}
+
+func clamp(value: number, minimum: number, maximum: number) -> number {
+    give min(max(value, minimum), maximum)
+}

@@ -1,0 +1,20 @@
+// Falcon standard library: random
+use "native/random.fc" as native
+
+func seed(value: int) {
+    native.seed(value)
+}
+
+func next() -> float {
+    give native.next()
+}
+
+func integer(minimum: int, maximum: int) -> int {
+    give native.integer(minimum, maximum)
+}
+
+func choice(items: list) -> any {
+    give native.choice(items)
+}
+
+

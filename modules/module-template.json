@@ -1,0 +1,6 @@
+{
+  "name": "my-module",
+  "version": "0.1.0",
+  "description": "A Falcon module",
+  "main": "main.fc"
+}

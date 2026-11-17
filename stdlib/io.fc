@@ -1,0 +1,33 @@
+// Falcon standard library: io
+use "native/io.fc" as native
+
+func print(value: any) {
+    native.print(value)
+}
+
+func println(value: any) {
+    native.println(value)
+}
+
+func readLine() -> string {
+    give native.readLine()
+}
+
+func hasInput() -> bool {
+    give native.hasInput()
+}
+
+func prompt(message: string) -> string {
+    give native.prompt(message)
+}
+
+use "std/text.fc" as text
+
+func readInt() -> int {
+    give text.toInt(readLine())
+}
+
+func readNumber() -> number {
+    give text.toNumber(readLine())
+}
+

@@ -1,0 +1,26 @@
+use math
+
+func main() {
+    say("Factorial of 6:", math.factorial(6))
+    say("Average:", average(10, 15))
+
+    var count = 3
+    while (count > 0) {
+        say(count)
+        count = count - 1
+    }
+}
+
+func factorial(n: int) -> int {
+    if (n <= 1) {
+        give 1
+    } else {
+        give n * factorial(n - 1)
+    }
+}
+
+func average(a: float, b: float) -> float {
+    give (
+        (a + b) / 2
+    )
+}

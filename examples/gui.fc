@@ -1,0 +1,17 @@
+use "std/gui.fc" as gui
+
+func main() {
+    fix window = gui.window("Hello from Falcon", 420, 240)
+    gui.label(window, "What should I call you?")
+    fix name = gui.input(window, "")
+    gui.button(window, "Say hello", "greet")
+    fix greeting = gui.label(window, "")
+    gui.show(window)
+
+    while (gui.isOpen(window)) {
+        fix event = gui.nextEvent(window)
+        if (event == "greet") {
+            gui.setText(greeting, "Hello, " + gui.text(name) + "!")
+        }
+    }
+}

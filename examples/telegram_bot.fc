@@ -1,0 +1,52 @@
+use "../libraries/telebot.fc" as telebot
+use "std/os.fc" as os
+use "std/collections.fc" as c
+use "std/time.fc" as time
+
+func main() {
+    // Set TELEGRAM_BOT_TOKEN in your shell, not in this file.
+    fix bot = telebot.TeleBot(os.env("TELEGRAM_BOT_TOKEN"))
+    telebot.set_logging(bot, "INFO", "bot.log")
+    fix identity = telebot.get_me(bot)
+    if (!telebot.ok(identity)) {
+        say(telebot.error(identity))
+        give
+    }
+    telebot.log(bot, "Bot is ready. Press Ctrl+C to stop.")
+    var running = true
+    while (running) {
+        fix batch = telebot.poll(bot, 25)
+        if (telebot.ok(batch)) {
+            each (item in telebot.updates(batch)) {
+                fix update = c.asMap(item)
+                if (telebot.has_message(update)) {
+                    fix message = telebot.message(update)
+                    var response = c.newMap()
+                    if (telebot.command(message) == "/start") {
+                        response = telebot.reply_to(bot, message, "Привіт! I am a Falcon bot. Send me some text.")
+                    } elseif (telebot.text(message) != "") {
+                        response = telebot.reply_to(bot, message, telebot.text(message))
+                    }
+                    if (c.hasKey(response, "ok") && !telebot.ok(response)) {
+                        telebot.log(bot, telebot.error(response))
+                    }
+                } elseif (c.hasKey(update, "callback_query")) {
+                    fix query = c.asMap(update["callback_query"])
+                    telebot.answer_callback_query(bot, c.asString(query["id"]), "Button received")
+                }
+            }
+        } else {
+            telebot.log(bot, telebot.error(batch))
+            fix code = telebot.error_code(batch)
+            if (code == 401 || code == 409 || code == 403) {
+                // Check the token, webhook, or another running poller before retrying.
+                running = false
+            } else {
+                var delay = telebot.retry_after(batch)
+                if (delay < 2) { delay = 2 }
+                time.sleep(delay * 1000)
+            }
+        }
+    }
+    telebot.close(bot)
+}

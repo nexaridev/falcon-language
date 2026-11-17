@@ -1,0 +1,64 @@
+// Falcon standard library: text
+use "native/text.fc" as native
+
+func length(value: string) -> int {
+    give native.length(value)
+}
+
+func trim(value: string) -> string {
+    give native.trim(value)
+}
+
+func lower(value: string) -> string {
+    give native.lower(value)
+}
+
+func upper(value: string) -> string {
+    give native.upper(value)
+}
+
+func contains(value: string, part: string) -> bool {
+    give native.contains(value, part)
+}
+
+func startsWith(value: string, part: string) -> bool {
+    give native.startsWith(value, part)
+}
+
+func endsWith(value: string, part: string) -> bool {
+    give native.endsWith(value, part)
+}
+
+func replace(value: string, oldText: string, newText: string) -> string {
+    give native.replace(value, oldText, newText)
+}
+
+func substring(value: string, start: int, end: int) -> string {
+    give native.substring(value, start, end)
+}
+
+func split(value: string, separator: string) -> list {
+    give native.split(value, separator)
+}
+
+func join(items: list, separator: string) -> string {
+    give native.join(items, separator)
+}
+
+func toInt(value: string) -> int {
+    give native.toInt(value)
+}
+
+func toFloat(value: string) -> float {
+    give native.toFloat(value)
+}
+
+func toNumber(value: string) -> number {
+    give native.toNumber(value)
+}
+
+func from(value: any) -> string {
+    give native.from(value)
+}
+
+

@@ -1,0 +1,117 @@
+// Optional TeleBot-inspired module. Requires Falcon 0.6+.
+use "native/telebot.fc" as native
+use "std/collections.fc" as c
+use "std/text.fc" as strings
+
+func TeleBot(token: string) -> int { give native.create(token) }
+func close(bot: int) { native.close(bot) }
+func set_logging(bot: int, level: string, filename: string) { native.setLogging(bot, level, filename) }
+func log(bot: int, value: string) { native.log(bot, value) }
+
+// Requests return {ok, result, error_code, description, retry_after} maps.
+func request(bot: int, method: string, parameters: map) -> map { give native.call(bot, method, parameters) }
+func ok(response: map) -> bool { give c.asBool(response["ok"]) }
+func result(response: map) -> any { give response["result"] }
+func error_code(response: map) -> int { give c.asInt(response["error_code"]) }
+func error(response: map) -> string { give c.asString(response["description"]) }
+func retry_after(response: map) -> int { give c.asInt(response["retry_after"]) }
+func get_me(bot: int) -> map { give request(bot, "getMe", c.newMap()) }
+func get_webhook_info(bot: int) -> map { give request(bot, "getWebhookInfo", c.newMap()) }
+func delete_webhook(bot: int, dropPending: bool) -> map {
+    fix parameters = c.newMap()
+    c.put(parameters, "drop_pending_updates", dropPending)
+    give request(bot, "deleteWebhook", parameters)
+}
+
+// poll remembers the offset; the NEXT poll acknowledges the previous batch.
+func poll(bot: int, timeoutSeconds: int) -> map { give native.poll(bot, timeoutSeconds) }
+func get_updates(bot: int, offset: int, timeoutSeconds: int) -> map {
+    fix parameters = c.newMap()
+    c.put(parameters, "offset", offset)
+    c.put(parameters, "timeout", timeoutSeconds)
+    c.put(parameters, "allowed_updates", ["message", "callback_query"])
+    give request(bot, "getUpdates", parameters)
+}
+func updates(response: map) -> list {
+    if (!ok(response)) { give [] }
+    give c.asList(result(response))
+}
+func has_message(update: map) -> bool { give c.hasKey(update, "message") }
+func message(update: map) -> map { give c.asMap(update["message"]) }
+func chat_id(incoming: map) -> int {
+    fix chat = c.asMap(incoming["chat"])
+    give c.asInt(chat["id"])
+}
+func text(incoming: map) -> string {
+    if (c.hasKey(incoming, "text")) { give c.asString(incoming["text"]) }
+    give ""
+}
+func command(incoming: map) -> string {
+    fix value = text(incoming)
+    if (!strings.startsWith(value, "/")) { give "" }
+    fix words = strings.split(value, " ")
+    fix parts = strings.split(c.asString(words[0]), "@")
+    give c.asString(parts[0])
+}
+func send_message(bot: int, chatId: any, value: string) -> map {
+    give send_message_with(bot, chatId, value, c.newMap())
+}
+func send_message_with(bot: int, chatId: any, value: string, options: map) -> map {
+    fix parameters = c.newMap()
+    each (item in c.keys(options)) {
+        fix key = c.asString(item)
+        c.put(parameters, key, options[key])
+    }
+    c.put(parameters, "chat_id", chatId)
+    c.put(parameters, "text", value)
+    give request(bot, "sendMessage", parameters)
+}
+func reply_to(bot: int, incoming: map, value: string) -> map {
+    fix options = c.newMap()
+    fix reply = c.newMap()
+    c.put(reply, "message_id", incoming["message_id"])
+    c.put(options, "reply_parameters", reply)
+    give send_message_with(bot, chat_id(incoming), value, options)
+}
+func edit_message_text(bot: int, chatId: any, messageId: int, value: string) -> map {
+    fix parameters = c.newMap()
+    c.put(parameters, "chat_id", chatId)
+    c.put(parameters, "message_id", messageId)
+    c.put(parameters, "text", value)
+    give request(bot, "editMessageText", parameters)
+}
+func delete_message(bot: int, chatId: any, messageId: int) -> map {
+    fix parameters = c.newMap()
+    c.put(parameters, "chat_id", chatId)
+    c.put(parameters, "message_id", messageId)
+    give request(bot, "deleteMessage", parameters)
+}
+func send_photo(bot: int, chatId: any, filename: string, caption: string) -> map {
+    fix parameters = c.newMap()
+    c.put(parameters, "chat_id", chatId)
+    c.put(parameters, "caption", caption)
+    give native.upload(bot, "sendPhoto", parameters, "photo", filename)
+}
+func send_document(bot: int, chatId: any, filename: string, caption: string) -> map {
+    fix parameters = c.newMap()
+    c.put(parameters, "chat_id", chatId)
+    c.put(parameters, "caption", caption)
+    give native.upload(bot, "sendDocument", parameters, "document", filename)
+}
+func button(label: string, data: string) -> map {
+    fix entry = c.newMap()
+    c.put(entry, "text", label)
+    c.put(entry, "callback_data", data)
+    give entry
+}
+func inline_keyboard(rows: list) -> map {
+    fix markup = c.newMap()
+    c.put(markup, "inline_keyboard", rows)
+    give markup
+}
+func answer_callback_query(bot: int, queryId: string, value: string) -> map {
+    fix parameters = c.newMap()
+    c.put(parameters, "callback_query_id", queryId)
+    c.put(parameters, "text", value)
+    give request(bot, "answerCallbackQuery", parameters)
+}

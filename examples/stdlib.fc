@@ -1,0 +1,39 @@
+use io
+use math
+use text
+use collections as c
+use fs
+use path
+use random
+use time
+use json
+use os
+use test
+use http
+
+func main() {
+    io.println("Falcon standard library")
+    say("Square:", math.square(2.5))
+    say("Words:", text.split("hello Falcon", " "))
+
+    var scores = [10, 2.5, 7]
+    c.push(scores, 12)
+    say("Sorted:", c.sortNumbers(scores))
+
+    var profile = c.newMap()
+    c.put(profile, "name", "Falcon")
+    c.put(profile, "scores", scores)
+    fix encoded = json.stringify(profile)
+    say(encoded)
+    test.equal(json.parse(encoded), profile)
+
+    random.seed(42)
+    say("Random integer:", random.integer(1, 7))
+    say("Date:", time.iso(time.now()))
+    say("Current directory:", os.cwd())
+    say("Arguments:", os.args())
+    say("Directory exists:", fs.isDir(path.absolute(".")))
+
+    // Networking is opt-in: http.get("https://example.com") returns a map.
+    // This example does not send requests or write files.
+}

@@ -1,0 +1,14 @@
+use math
+
+func double(value: number) -> number {
+    give value * 2
+}
+
+func main() {
+    var value: number = 5
+    say(double(value))
+    value = 2.5
+    say(double(value))
+    say(math.square(value))
+    say(math.square(math.sqrt(5)))
+}

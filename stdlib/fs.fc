@@ -1,0 +1,40 @@
+// Falcon standard library: fs
+use "native/fs.fc" as native
+
+func readText(filename: string) -> string {
+    give native.readText(filename)
+}
+
+func writeText(filename: string, content: string) {
+    native.writeText(filename, content)
+}
+
+func appendText(filename: string, content: string) {
+    native.appendText(filename, content)
+}
+
+func exists(filename: string) -> bool {
+    give native.exists(filename)
+}
+
+func isFile(filename: string) -> bool {
+    give native.isFile(filename)
+}
+
+func isDir(filename: string) -> bool {
+    give native.isDir(filename)
+}
+
+func mkdir(directory: string) {
+    native.mkdir(directory)
+}
+
+func listDir(directory: string) -> list {
+    give native.listDir(directory)
+}
+
+func remove(filename: string) -> bool {
+    give native.remove(filename)
+}
+
+

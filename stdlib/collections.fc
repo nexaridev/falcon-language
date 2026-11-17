@@ -1,0 +1,117 @@
+// Falcon standard library: collections
+use "native/collections.fc" as native
+
+func newList() -> list {
+    give native.newList()
+}
+
+func newMap() -> map {
+    give native.newMap()
+}
+
+func size(value: any) -> int {
+    give native.size(value)
+}
+
+func push(items: list, value: any) {
+    native.push(items, value)
+}
+
+func get(items: list, index: int) -> any {
+    give native.get(items, index)
+}
+
+func set(items: list, index: int, value: any) {
+    native.set(items, index, value)
+}
+
+func remove(items: list, index: int) -> any {
+    give native.remove(items, index)
+}
+
+func put(entries: map, key: string, value: any) {
+    native.put(entries, key, value)
+}
+
+func lookup(entries: map, key: string) -> any {
+    give native.lookup(entries, key)
+}
+
+func hasKey(entries: map, key: string) -> bool {
+    give native.hasKey(entries, key)
+}
+
+func erase(entries: map, key: string) -> bool {
+    give native.erase(entries, key)
+}
+
+func keys(entries: map) -> list {
+    give native.keys(entries)
+}
+
+func values(entries: map) -> list {
+    give native.values(entries)
+}
+
+func reverse(items: list) -> list {
+    var result = newList()
+    var index = size(items)
+    while (index > 0) {
+        index = index - 1
+        push(result, get(items, index))
+    }
+    give result
+}
+
+func sortNumbers(items: list) -> list {
+    // Stable insertion sort; the input list is left unchanged.
+    var result = newList()
+    each (item in items) {
+        fix value = asNumber(item)
+        push(result, value)
+        var index = size(result) - 1
+        while (index > 0 && native.compareNumbers(asNumber(get(result, index - 1)), value) > 0) {
+            set(result, index, get(result, index - 1))
+            index = index - 1
+        }
+        set(result, index, value)
+    }
+    give result
+}
+
+func asNumber(value: any) -> number {
+    give native.asNumber(value)
+}
+
+func asInt(value: any) -> int {
+    give native.asInt(value)
+}
+
+func asFloat(value: any) -> float {
+    give native.asFloat(value)
+}
+
+func asString(value: any) -> string {
+    give native.asString(value)
+}
+
+func asBool(value: any) -> bool {
+    give native.asBool(value)
+}
+
+func asList(value: any) -> list {
+    give native.asList(value)
+}
+
+func asMap(value: any) -> map {
+    give native.asMap(value)
+}
+
+func isNull(value: any) -> bool {
+    give native.isNull(value)
+}
+
+func kind(value: any) -> string {
+    give native.kind(value)
+}
+

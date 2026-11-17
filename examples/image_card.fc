@@ -1,0 +1,15 @@
+use "../libraries/pillow.fc" as image
+
+func main() {
+    fix card = image.new_image(800, 400, "#18243B")
+    image.rectangle(card, 30, 30, 770, 370, "#233954")
+    image.ellipse(card, 620, 60, 730, 170, "#63DBC6")
+    image.draw_text(card, 60, 110, "Привіт, Falcon!", 48, "#FFFFFF")
+    image.draw_text(card, 60, 195, "Images made with a .fc module", 24, "#A9BED8")
+    image.save(card, "falcon-card.png", "png")
+    fix preview = image.resize(card, 400, 200)
+    image.save(preview, "falcon-card-small.jpg", "jpeg")
+    image.close(preview)
+    image.close(card)
+    say("Saved falcon-card.png and falcon-card-small.jpg")
+}

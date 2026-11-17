@@ -1,0 +1,26 @@
+// Falcon standard library: test
+use "native/test.fc" as native
+use "std/math.fc" as math
+use "std/text.fc" as text
+
+func assert(condition: bool, message: string) {
+    if (!condition) { fail("Assertion failed: " + message) }
+}
+
+func equal(actual: any, expected: any) {
+    if (actual != expected) {
+        fail("Expected " + text.from(expected) + ", got " + text.from(actual) + ".")
+    }
+}
+
+func near(actual: number, expected: number, tolerance: number) {
+    if (tolerance < 0) { fail("Tolerance cannot be negative.") }
+    if (math.abs(actual - expected) > tolerance) {
+        fail("Values differ by more than " + tolerance + ".")
+    }
+}
+
+func fail(message: string) {
+    native.fail(message)
+}
+

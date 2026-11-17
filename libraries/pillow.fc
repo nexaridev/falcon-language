@@ -1,0 +1,86 @@
+// Optional Pillow-inspired image module. Requires Falcon 0.6+.
+use "native/pillow.fc" as native
+
+func new_image(imageWidth: int, imageHeight: int, color: string) -> int {
+    give native.create(imageWidth, imageHeight, color)
+}
+
+func open(filename: string) -> int {
+    give native.open(filename)
+}
+
+func save(image: int, filename: string, format: string) {
+    native.save(image, filename, format)
+}
+
+func width(image: int) -> int {
+    give native.width(image)
+}
+
+func height(image: int) -> int {
+    give native.height(image)
+}
+
+func close(image: int) {
+    native.close(image)
+}
+
+func copy(image: int) -> int {
+    give native.copy(image)
+}
+
+func resize(image: int, targetWidth: int, targetHeight: int) -> int {
+    give native.resize(image, targetWidth, targetHeight)
+}
+
+func crop(image: int, left: int, top: int, right: int, bottom: int) -> int {
+    give native.crop(image, left, top, right, bottom)
+}
+
+func rotate(image: int, degrees: int) -> int {
+    give native.rotate(image, degrees)
+}
+
+func flip(image: int, axis: string) -> int {
+    give native.flip(image, axis)
+}
+
+func grayscale(image: int) -> int {
+    give native.grayscale(image)
+}
+
+func blur(image: int) -> int {
+    give native.blur(image)
+}
+
+func brightness(image: int, factor: number) -> int {
+    give native.brightness(image, factor)
+}
+
+func get_pixel(image: int, x: int, y: int) -> string {
+    give native.getPixel(image, x, y)
+}
+
+func put_pixel(image: int, x: int, y: int, color: string) {
+    native.putPixel(image, x, y, color)
+}
+
+func paste(image: int, source: int, x: int, y: int) {
+    native.paste(image, source, x, y)
+}
+
+func draw_text(image: int, x: int, y: int, value: string, size: int, color: string) {
+    native.drawText(image, x, y, value, size, color)
+}
+
+func rectangle(image: int, left: int, top: int, right: int, bottom: int, color: string) {
+    native.rectangle(image, left, top, right, bottom, color)
+}
+
+func ellipse(image: int, left: int, top: int, right: int, bottom: int, color: string) {
+    native.ellipse(image, left, top, right, bottom, color)
+}
+
+func line(image: int, x1: int, y1: int, x2: int, y2: int, color: string) {
+    native.line(image, x1, y1, x2, y2, color)
+}

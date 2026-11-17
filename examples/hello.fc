@@ -1,0 +1,8 @@
+func main() {
+    fix language = "Falcon"
+    say("Hello from " + language + "!")
+
+    each (i in 0..19) {
+        say("Cunt:", i)
+    }
+}

@@ -1,0 +1,12 @@
+// Falcon standard library: json
+use "native/json.fc" as native
+
+func parse(source: string) -> any {
+    give native.parse(source)
+}
+
+func stringify(value: any) -> string {
+    give native.stringify(value)
+}
+
+

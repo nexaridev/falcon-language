@@ -1,0 +1,54 @@
+// Simple desktop widgets. Handles are ints; events are strings.
+use "native/gui.fc" as native
+
+func window(title: string, width: int, height: int) -> int {
+    give native.window(title, width, height)
+}
+
+func label(windowId: int, value: string) -> int {
+    give native.label(windowId, value)
+}
+
+func input(windowId: int, value: string) -> int {
+    give native.input(windowId, value)
+}
+
+func button(windowId: int, caption: string, event: string) -> int {
+    give native.button(windowId, caption, event)
+}
+
+func text(control: int) -> string {
+    give native.text(control)
+}
+
+func setText(control: int, value: string) {
+    native.setText(control, value)
+}
+
+func setEnabled(control: int, enabled: bool) {
+    native.setEnabled(control, enabled)
+}
+
+func show(windowId: int) {
+    native.show(windowId)
+}
+
+func isOpen(windowId: int) -> bool {
+    give native.isOpen(windowId)
+}
+
+func nextEvent(windowId: int) -> string {
+    give native.nextEvent(windowId)
+}
+
+func close(windowId: int) {
+    native.close(windowId)
+}
+
+func message(title: string, value: string) {
+    native.message(title, value)
+}
+
+func confirm(title: string, value: string) -> bool {
+    give native.confirm(title, value)
+}

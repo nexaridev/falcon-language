@@ -1,0 +1,12 @@
+// Falcon standard library: http
+use "native/http.fc" as native
+
+func get(url: string) -> map {
+    give native.get(url)
+}
+
+func request(method: string, url: string, body: string, timeoutMs: int) -> map {
+    give native.request(method, url, body, timeoutMs)
+}
+
+
