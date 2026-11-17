@@ -53,7 +53,16 @@ final class Parser {
                 case "int" -> Type.INT; case "float" -> Type.FLOAT; case "bool" -> Type.BOOL;
                 case "string" -> Type.STRING; case "void" -> Type.VOID;
                 case "number" -> Type.NUMBER; case "any" -> Type.ANY;
-                case "list" -> Type.LIST; case "map" -> Type.MAP;
+                case "list" -> {
+                    if (match("<")) {
+                        Type element = type(); expect(">");
+                        if (element == Type.VOID || element == Type.RANGE || element == Type.MAP)
+                            throw error(token, "List elements must have a value type, such as int, bool, string, number or any.");
+                        yield Type.listOf(element);
+                    }
+                    yield Type.LIST;
+                }
+                case "map" -> Type.MAP;
                 default -> throw error(token, "Unknown type '" + token.text() + "'.");
             };
         }
@@ -93,7 +102,10 @@ final class Parser {
             Token name = name(); expect("="); newlines(); Expr value = expression(); endStatement();
             return new Assign(name, value);
         }
-        Expr value = expression(); endStatement(); return new ExprStmt(start, value);
+        Expr value = expression();
+        if (value instanceof Index && at("="))
+            throw error(peek(), "Index assignment isn't supported yet. Assign to a whole list variable instead.");
+        endStatement(); return new ExprStmt(start, value);
     }
 
     private When conditional(Token start) {

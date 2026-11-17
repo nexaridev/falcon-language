@@ -139,6 +139,8 @@ final class ModuleLoader {
 
     private boolean hasStandard(String name) {
         if (!name.matches("[\\p{L}_][\\p{L}\\p{N}_]*")) return false;
+        Path projectStandard = findStandardDirectory(overlayPath == null ? Path.of("").toAbsolutePath() : overlayPath.getParent());
+        if (projectStandard != null && Files.isRegularFile(projectStandard.resolve(name + ".fc"))) return true;
         String directory = System.getProperty("falcon.stdlib", "");
         return directory.isBlank() ? ModuleLoader.class.getResource("/stdlib/" + name + ".fc") != null
                 : Files.isRegularFile(Path.of(directory).resolve(name + ".fc"));
@@ -158,7 +160,9 @@ final class ModuleLoader {
         activeStandard.add(name);
         String file = "stdlib/" + name + ".fc";
         String source;
-        String directory = System.getProperty("falcon.stdlib", "");
+        Path projectStandard = findStandardDirectory(overlayPath == null ? Path.of("").toAbsolutePath() : overlayPath.getParent());
+        String directory = projectStandard != null && Files.isRegularFile(projectStandard.resolve(name + ".fc"))
+                ? projectStandard.toString() : System.getProperty("falcon.stdlib", "");
         try {
             if (!directory.isBlank()) {
                 Path path = Path.of(directory).resolve(name + ".fc").toRealPath();
@@ -195,6 +199,14 @@ final class ModuleLoader {
         standardModules.put(name, module);
         activeStandard.remove(name);
         return module;
+    }
+
+    private Path findStandardDirectory(Path directory) {
+        for (Path current = directory; current != null; current = current.getParent()) {
+            Path candidate = current.resolve("stdlib");
+            if (Files.isDirectory(candidate)) return candidate;
+        }
+        return null;
     }
 
     private Stmt link(Stmt stmt, Module module) {

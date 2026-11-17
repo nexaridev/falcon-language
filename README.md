@@ -1,7 +1,7 @@
 # Falcon (.fc)
 
 Falcon is a small, statically checked programming language implemented in Java.
-Version 0.10 is a working reference interpreter with a separate lexer, parser,
+Version 0.11 is a working reference interpreter with a separate lexer, parser,
 abstract syntax tree, semantic checker, and execution backend.
 
 ```fc
@@ -22,6 +22,8 @@ func square(n: int) -> int {
 ## Run on Windows
 
 Requires **JDK 17 or newer**. No Maven, Gradle, or external Java dependencies.
+
+Create a ready-to-use project in the current folder with `falcon setup`. It creates `src`, `examples`, `modules`, `stdlib`, `.vscode`, and a starter `main.falcon`; copies missing standard modules and module-install helpers; and points VS Code to the local standard library. Existing files and editor settings are preserved.
 The scripts discover a JDK through `JAVA_HOME`, `javac` on `PATH`, or your
 `%USERPROFILE%\.jdks` directory. They do not change system settings.
 

@@ -3,6 +3,6 @@ func main() {
     say("Hello from " + language + "!")
 
     each (i in 0..19) {
-        say("Cunt:", i)
+        say("Count:", i)
     }
 }

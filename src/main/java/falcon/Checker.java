@@ -80,12 +80,14 @@ final class Checker {
             require(loop.token(), Type.BOOL, expression(loop.condition())); statement(loop.body());
         } else if (statement instanceof Each each) {
             Type iterable = expression(each.iterable());
-            if (iterable != Type.RANGE && iterable != Type.LIST) fail(each.token(), "Expected range or list, got " + iterable + ".");
-            scopes.push(new HashMap<>()); declare(each.name(), new Symbol(iterable == Type.RANGE ? Type.INT : Type.ANY, false));
+            if (iterable != Type.RANGE && !iterable.isList()) fail(each.token(), "Expected range or list, got " + iterable + ".");
+            scopes.push(new HashMap<>()); declare(each.name(), new Symbol(iterable == Type.RANGE ? Type.INT : iterable.elementType(), false));
             statements(each.body()); scopes.pop();
         } else if (statement instanceof Give give) {
             Type actual = give.value() == null ? Type.VOID : expression(give.value());
             if (give.value() != null && actual == Type.VOID) fail(give.token(), "A void call has no value to return; use 'give' alone.");
+            if (give.value() == null && result != Type.VOID)
+                fail(give.token(), "Expected " + result + ", got void. A newline ends the 'give' statement; put the returned value on the same line, for example: give 42.");
             compatible(give.token(), result, actual); return true;
         }
         return false;
@@ -95,16 +97,24 @@ final class Checker {
         Type type;
         if (expr instanceof Literal literal) type = literal.type();
         else if (expr instanceof ListExpr list) {
+            Type elementType = null;
             for (Expr element : list.elements()) {
                 Type actual = expression(element);
                 if (actual == Type.VOID || actual == Type.RANGE) fail(element.token(), "Cannot store " + actual + " in a list.");
+                if (elementType == null) elementType = actual;
+                else if (elementType != actual) {
+                    if (isNumeric(elementType) && isNumeric(actual))
+                        elementType = elementType == Type.NUMBER || actual == Type.NUMBER ? Type.NUMBER
+                                : elementType == Type.FLOAT || actual == Type.FLOAT ? Type.FLOAT : Type.INT;
+                    else elementType = Type.ANY;
+                }
             }
-            type = Type.LIST;
+            type = list.elements().isEmpty() ? Type.LIST : Type.listOf(elementType == null ? Type.ANY : elementType);
         } else if (expr instanceof Index index) {
             Type target = expression(index.target());
-            if (target != Type.LIST && target != Type.MAP && target != Type.STRING) fail(index.token(), "Indexing requires a list, map or string.");
+            if (!target.isList() && target != Type.MAP && target != Type.STRING) fail(index.token(), "Indexing requires a list, map or string.");
             require(index.token(), target == Type.MAP ? Type.STRING : Type.INT, expression(index.index()));
-            type = target == Type.STRING ? Type.STRING : Type.ANY;
+            type = target == Type.STRING ? Type.STRING : target.isList() ? target.elementType() : Type.ANY;
         }
         else if (expr instanceof Name name) type = resolve(name.token()).type();
         else if (expr instanceof Unary unary) {
@@ -170,6 +180,8 @@ final class Checker {
     private static boolean isNumeric(Type type) { return type == Type.INT || type == Type.FLOAT || type == Type.NUMBER; }
     private void numeric(Token token, Type type) { if (!isNumeric(type)) fail(token, "Expected a number, got " + type + "."); }
     private void compatible(Token token, Type expected, Type actual) {
+        if (expected == Type.LIST && actual.isList()) return;
+        if (expected.isList() && actual == Type.LIST) return;
         if (expected == Type.ANY && actual != Type.VOID && actual != Type.RANGE) return;
         if (expected == Type.NUMBER && isNumeric(actual)) return;
         if (expected == Type.FLOAT && isNumeric(actual)) return;
