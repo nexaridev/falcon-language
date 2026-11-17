@@ -10,16 +10,20 @@ import static falcon.Ast.*;
 
 /** Resolves scopes and checks every function before execution, including unused code. */
 final class Checker {
-    record Symbol(Type type, boolean mutable, String structName) {
-        Symbol(Type type, boolean mutable) { this(type, mutable, null); }
+    record Symbol(Type type, boolean mutable, String structName, Type listElementType, String listElementStructName) {
+        Symbol(Type type, boolean mutable) { this(type, mutable, null, null, null); }
+        Symbol(Type type, boolean mutable, String structName) { this(type, mutable, structName, null, null); }
     }
     final Map<String, Function> functions = new LinkedHashMap<>();
     final Map<Expr, Type> types = new IdentityHashMap<>();
     final java.util.List<FalconError> errors = new java.util.ArrayList<>();
     final Map<String, StructDecl> structs = new LinkedHashMap<>();
     final Map<Expr, String> structNames = new IdentityHashMap<>();
+    final Map<Expr, String> listStructNames = new IdentityHashMap<>();
+    final Map<Expr, Type> listElementTypes = new IdentityHashMap<>();
     private final Deque<Map<String, Symbol>> scopes = new ArrayDeque<>();
     private Type result;
+    private String resultStructName;
     private String namespace = "";
 
     void check(Program program) {
@@ -32,11 +36,14 @@ final class Checker {
         for (StructDecl struct : program.structs()) {
             if (structs.putIfAbsent(struct.name().text(), struct) != null)
                 fail(struct.name(), "Struct '" + struct.name().text() + "' is already defined.");
+        }
+        for (StructDecl struct : program.structs()) {
             var fields = new java.util.HashSet<String>();
             for (StructField field : struct.fields()) {
                 if (!fields.add(field.name().text())) fail(field.name(), "Field '" + field.name().text() + "' is already declared.");
-                if (field.type() == Type.VOID || field.type() == Type.RANGE || field.type() == Type.STRUCT)
+                if (field.type() == Type.VOID || field.type() == Type.RANGE)
                     fail(field.name(), "Struct fields need a concrete value type.");
+                validateStructType(field.name(), field.type(), field.structName());
             }
         }
         for (Function function : program.functions()) {
@@ -50,10 +57,14 @@ final class Checker {
             fail(main.name(), "The entry point must be 'func main()' with no parameters or return value.");
         for (Function function : program.functions()) {
             namespace = function.namespace();
-            result = function.result(); scopes.push(new HashMap<>());
+            result = function.result(); resultStructName = function.resultStructName(); scopes.push(new HashMap<>());
+            validateStructType(function.name(), function.result(), function.resultStructName());
             for (Parameter param : function.parameters()) {
                 valueType(param.name(), param.type());
-                declare(param.name(), new Symbol(param.type(), true));
+                validateStructType(param.name(), param.type(), param.structName());
+                declare(param.name(), new Symbol(param.type(), true,
+                        param.type() == Type.STRUCT ? param.structName() : null, null,
+                        param.type() == Type.LIST_STRUCT ? param.structName() : null));
             }
             boolean returns;
             try {
@@ -81,27 +92,59 @@ final class Checker {
             try { return statements(block); } finally { scopes.pop(); }
         }
         if (statement instanceof Binding binding) {
-            Type actual = expression(binding.value()); valueType(binding.name(), actual);
-            Type type = binding.annotation() == null ? actual : binding.annotation();
-            valueType(binding.name(), type); compatible(binding.name(), type, actual);
-            declare(binding.name(), new Symbol(type, binding.mutable(), structNames.get(binding.value())));
+            try {
+                Type actual = expression(binding.value()); valueType(binding.name(), actual);
+                Type type = binding.annotation() == null ? actual : binding.annotation();
+                valueType(binding.name(), type);
+                if (binding.annotation() != null) {
+                    validateStructType(binding.name(), binding.annotation(), binding.annotationStructName());
+                    compatibleRef(binding.name(), type, binding.annotationStructName(), actual, binding.value());
+                }
+                String structName = type == Type.STRUCT
+                        ? (binding.annotation() == null ? structNames.get(binding.value()) : binding.annotationStructName()) : null;
+                Type listElement = type.isList()
+                        ? (binding.annotation() == null ? listElementTypes.get(binding.value()) : type.elementType()) : null;
+                String elementStruct = type.isList()
+                        ? (binding.annotation() == null ? listStructNames.get(binding.value()) : binding.annotationStructName()) : null;
+                declare(binding.name(), new Symbol(type, binding.mutable(), structName, listElement, elementStruct));
+            } catch (FalconError error) {
+                String name = binding.name().text();
+                if (!scopes.peek().containsKey(name) && !functions.containsKey(namespace + name) && !name.equals("say")) {
+                    Type fallbackType = binding.annotation() == null ? Type.ANY : binding.annotation();
+                    String fallbackStruct = binding.annotationStructName();
+                    if (binding.annotation() == null && binding.value() instanceof Call call && structs.containsKey(call.target())) {
+                        fallbackType = Type.STRUCT; fallbackStruct = call.target();
+                    }
+                    scopes.peek().put(name, new Symbol(fallbackType, binding.mutable(),
+                            fallbackType == Type.STRUCT ? fallbackStruct : null,
+                            fallbackType.isList() ? fallbackType.elementType() : null,
+                            fallbackType == Type.LIST_STRUCT ? fallbackStruct : null));
+                }
+                throw error;
+            }
         } else if (statement instanceof Assign assign) {
             Symbol symbol = resolve(assign.token());
             if (!symbol.mutable()) fail(assign.token(), "Cannot reassign '" + assign.token().text() + "'; it was declared with 'fix'.");
-            compatible(assign.token(), symbol.type(), expression(assign.value()));
+            compatibleRef(assign.token(), symbol.type(),
+                    symbol.type() == Type.STRUCT ? symbol.structName()
+                            : symbol.type().isList() ? symbol.listElementStructName() : null,
+                    expression(assign.value()), assign.value());
         } else if (statement instanceof IndexAssign assign) {
             Type target = expression(assign.target());
             if (!target.isList() && target != Type.MAP) fail(assign.token(), "Index assignment requires a list or map.");
             Type key = expression(assign.index());
             require(assign.token(), target == Type.MAP ? Type.STRING : Type.INT, key);
             Type actual = expression(assign.value());
-            compatible(assign.token(), target == Type.MAP ? Type.ANY : target.elementType(), actual);
+            Type elementType = target == Type.MAP ? Type.ANY : target == Type.LIST
+                    ? listElementTypes.getOrDefault(assign.target(), Type.ANY) : target.elementType();
+            String elementStruct = target == Type.LIST_STRUCT ? listStructNames.get(assign.target()) : null;
+            compatibleRef(assign.token(), elementType, elementStruct, actual, assign.value());
         } else if (statement instanceof FieldAssign assign) {
             Type targetType = expression(assign.target());
             String structName = structNames.get(assign.target());
             if (targetType != Type.STRUCT || structName == null) fail(assign.token(), "Field assignment requires a struct value.");
             StructField field = field(structName, assign.field());
-            compatible(assign.field(), field.type(), expression(assign.value()));
+            compatibleRef(assign.field(), field.type(), field.structName(), expression(assign.value()), assign.value());
         } else if (statement instanceof ExprStmt expr) {
             expression(expr.value());
             if (!(expr.value() instanceof Call)) fail(expr.token(), "This expression has no effect; assign it or pass it to say(...).");
@@ -117,7 +160,11 @@ final class Checker {
             if (iterable != Type.RANGE && !iterable.isList()) fail(each.token(), "Expected range or list, got " + iterable + ".");
             scopes.push(new HashMap<>());
             try {
-                declare(each.name(), new Symbol(iterable == Type.RANGE ? Type.INT : iterable.elementType(), false));
+                Type element = iterable == Type.RANGE ? Type.INT : iterable == Type.LIST
+                        ? listElementTypes.getOrDefault(each.iterable(), Type.ANY) : iterable.elementType();
+                String elementStruct = iterable == Type.LIST_STRUCT || iterable == Type.LIST
+                        ? listStructNames.get(each.iterable()) : null;
+                declare(each.name(), new Symbol(element, false, element == Type.STRUCT ? elementStruct : null));
                 statements(each.body());
             } finally { scopes.pop(); }
         } else if (statement instanceof Give give) {
@@ -125,7 +172,7 @@ final class Checker {
             if (give.value() != null && actual == Type.VOID) fail(give.token(), "A void call has no value to return; use 'give' alone.");
             if (give.value() == null && result != Type.VOID)
                 fail(give.token(), "Expected " + result + ", got void. A newline ends the 'give' statement; put the returned value on the same line, for example: give 42.");
-            compatible(give.token(), result, actual); return true;
+            compatibleRef(give.token(), result, resultStructName, actual, give.value()); return true;
         } else if (statement instanceof TryCatch attempt) {
             boolean bodyReturns = statement(attempt.body());
             scopes.push(new HashMap<>());
@@ -156,21 +203,46 @@ final class Checker {
                 }
             }
             type = list.elements().isEmpty() ? Type.LIST : Type.listOf(elementType == null ? Type.ANY : elementType);
+            if (!list.elements().isEmpty()) listElementTypes.put(list, elementType == null ? Type.ANY : elementType);
+            if (elementType == Type.STRUCT) {
+                String firstStruct = structNames.get(list.elements().get(0));
+                boolean sameStruct = firstStruct != null && list.elements().stream().allMatch(e -> firstStruct.equals(structNames.get(e)));
+                if (sameStruct) listStructNames.put(list, firstStruct);
+                else type = Type.LIST;
+            } else if (elementType == Type.LIST_STRUCT) {
+                String firstStruct = listStructNames.get(list.elements().get(0));
+                boolean sameStruct = firstStruct != null && list.elements().stream().allMatch(e -> firstStruct.equals(listStructNames.get(e)));
+                if (sameStruct) listStructNames.put(list, firstStruct);
+                else type = Type.LIST;
+            }
         } else if (expr instanceof Index index) {
             Type target = expression(index.target());
             if (!target.isList() && target != Type.MAP && target != Type.STRING) fail(index.token(), "Indexing requires a list, map or string.");
             require(index.token(), target == Type.MAP ? Type.STRING : Type.INT, expression(index.index()));
-            type = target == Type.STRING ? Type.STRING : target.isList() ? target.elementType() : Type.ANY;
+            type = target == Type.STRING ? Type.STRING : target == Type.LIST
+                    ? listElementTypes.getOrDefault(index.target(), Type.ANY)
+                    : target.isList() ? target.elementType() : Type.ANY;
+            if (type == Type.STRUCT && listStructNames.containsKey(index.target()))
+                structNames.put(index, listStructNames.get(index.target()));
+            if (type.isList() && listElementTypes.containsKey(index.target()))
+                listElementTypes.put(index, listElementTypes.get(index.target()));
+            if (type == Type.LIST_STRUCT && listStructNames.containsKey(index.target()))
+                listStructNames.put(index, listStructNames.get(index.target()));
         }
         else if (expr instanceof Field fieldExpr) {
             Type target = expression(fieldExpr.target());
             String structName = structNames.get(fieldExpr.target());
             if (target != Type.STRUCT || structName == null) fail(fieldExpr.name(), "Field access requires a struct value.");
-            type = field(structName, fieldExpr.name()).type();
+            StructField declaration = field(structName, fieldExpr.name());
+            type = declaration.type();
+            if (type == Type.STRUCT) structNames.put(fieldExpr, declaration.structName());
+            if (type == Type.LIST_STRUCT) listStructNames.put(fieldExpr, declaration.structName());
         }
         else if (expr instanceof Name name) {
             Symbol symbol = resolve(name.token()); type = symbol.type();
             if (symbol.structName() != null) structNames.put(expr, symbol.structName());
+            if (symbol.listElementType() != null) listElementTypes.put(expr, symbol.listElementType());
+            if (symbol.listElementStructName() != null) listStructNames.put(expr, symbol.listElementStructName());
         }
         else if (expr instanceof Unary unary) {
             Type operand = expression(unary.value());
@@ -203,8 +275,11 @@ final class Checker {
             if (struct != null) {
                 if (call.arguments().size() != struct.fields().size())
                     fail(call.token(), "Struct '" + call.target() + "' expects " + struct.fields().size() + " field values.");
-                for (int i = 0; i < call.arguments().size(); i++)
-                    compatible(call.arguments().get(i).token(), struct.fields().get(i).type(), expression(call.arguments().get(i)));
+                for (int i = 0; i < call.arguments().size(); i++) {
+                    Expr argument = call.arguments().get(i);
+                    compatibleRef(argument.token(), struct.fields().get(i).type(), struct.fields().get(i).structName(),
+                            expression(argument), argument);
+                }
                 type = Type.STRUCT; structNames.put(call, call.target());
             } else
             if (call.token().text().equals("say")) {
@@ -216,9 +291,14 @@ final class Checker {
                 if (function == null) throw new FalconError(call.token(), "Unknown function '" + call.token().text() + "'. I couldn't find it; check the spelling or import its module.");
                 if (function.parameters().size() != call.arguments().size())
                     fail(call.token(), "Expected " + function.parameters().size() + " arguments, got " + call.arguments().size() + ".");
-                for (int i = 0; i < call.arguments().size(); i++)
-                    compatible(call.arguments().get(i).token(), function.parameters().get(i).type(), expression(call.arguments().get(i)));
+                for (int i = 0; i < call.arguments().size(); i++) {
+                    Expr argument = call.arguments().get(i);
+                    Parameter parameter = function.parameters().get(i);
+                    compatibleRef(argument.token(), parameter.type(), parameter.structName(), expression(argument), argument);
+                }
                 type = function.result();
+                if (type == Type.STRUCT) structNames.put(call, function.resultStructName());
+                if (type == Type.LIST_STRUCT) listStructNames.put(call, function.resultStructName());
             }
         } else throw new IllegalStateException("Unknown expression");
         types.put(expr, type); return type;
@@ -256,6 +336,32 @@ final class Checker {
         if (expected == Type.NUMBER && isNumeric(actual)) return;
         if (expected == Type.FLOAT && isNumeric(actual)) return;
         require(token, expected, actual);
+    }
+    private void compatibleRef(Token token, Type expected, String expectedStruct, Type actual, Expr actualExpr) {
+        if (expected == Type.STRUCT && actual == Type.STRUCT && expectedStruct != null) {
+            String actualStruct = actualExpr == null ? null : structNames.get(actualExpr);
+            if (!expectedStruct.equals(actualStruct))
+                fail(token, "Expected " + expectedStruct + ", got " + (actualStruct == null ? "an unknown struct" : actualStruct) + ".");
+            return;
+        }
+        if (expected == Type.LIST_STRUCT && actual == Type.LIST_STRUCT && expectedStruct != null) {
+            String actualStruct = actualExpr == null ? null : listStructNames.get(actualExpr);
+            if (!expectedStruct.equals(actualStruct))
+                fail(token, "Expected list<" + expectedStruct + ">, got list<" + (actualStruct == null ? "unknown" : actualStruct) + ">.");
+            return;
+        }
+        if (expected == Type.LIST_STRUCT && actual == Type.LIST && actualExpr instanceof ListExpr list && list.elements().isEmpty()) return;
+        if (expected.isList() && expected != Type.LIST && actual == Type.LIST)
+            fail(token, "Expected " + listTypeName(expected, expectedStruct) + ", got list<any>.");
+        compatible(token, expected, actual);
+    }
+    private String listTypeName(Type type, String structName) {
+        return type == Type.LIST_STRUCT && structName != null ? "list<" + structName + ">" : type.toString();
+    }
+    private void validateStructType(Token token, Type type, String structName) {
+        if ((type == Type.STRUCT || type == Type.LIST_STRUCT)
+                && (structName == null || !structs.containsKey(structName)))
+            fail(token, "Unknown type '" + (structName == null ? "struct" : structName) + "'.");
     }
     private void require(Token token, Type expected, Type actual) {
         if (expected != actual) fail(token, "Expected " + expected + ", got " + actual + ".");

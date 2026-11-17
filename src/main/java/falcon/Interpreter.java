@@ -12,9 +12,9 @@ import static falcon.Ast.*;
 /** Tree-walking reference backend. The checked AST is independent of this backend. */
 final class Interpreter {
     private record Range(long start, long end) {}
-    private static final class StructValue {
+    static final class StructValue {
         final String name;
-        final Map<String, Object> fields = new HashMap<>();
+        final Map<String, Object> fields = new java.util.LinkedHashMap<>();
         StructValue(String name) { this.name = name; }
     }
     private static final class Cell {

@@ -39,13 +39,14 @@ final class ModuleLoader {
         for (Module module : loaded) {
             for (Function function : module.program().functions()) {
                 for (Parameter parameter : function.parameters()) checkBinding(parameter.name(), module);
-                functions.add(new Function(function.name(), function.parameters(), function.result(),
-                        (Block) link(function.body(), module), module.namespace()));
+                functions.add(new Function(function.name(), qualify(function.parameters(), module), function.result(),
+                        qualify(function.resultStructName(), module), (Block) link(function.body(), module), module.namespace()));
             }
             for (StructDecl struct : module.program().structs()) {
                 Token name = struct.name();
                 Token qualified = new Token(name.kind(), module.namespace() + name.text(), name.line(), name.column(), name.file());
-                structs.add(new StructDecl(qualified, struct.fields()));
+                structs.add(new StructDecl(qualified, struct.fields().stream()
+                        .map(field -> new StructField(field.name(), field.type(), qualify(field.structName(), module))).toList()));
             }
         }
         return new Program(List.copyOf(functions), List.of(), List.copyOf(structs));
@@ -219,7 +220,8 @@ final class ModuleLoader {
         if (stmt instanceof Block b) return new Block(b.token(), b.statements().stream().map(s -> link(s, module)).toList());
         if (stmt instanceof Binding b) {
             checkBinding(b.name(), module);
-            return new Binding(b.token(), b.name(), b.annotation(), link(b.value(), module), b.mutable());
+            return new Binding(b.token(), b.name(), b.annotation(), qualify(b.annotationStructName(), module),
+                    link(b.value(), module), b.mutable());
         }
         if (stmt instanceof Assign a) return new Assign(a.token(), link(a.value(), module));
         if (stmt instanceof IndexAssign a) return new IndexAssign(a.token(), link(a.target(), module), link(a.index(), module), link(a.value(), module));
@@ -265,6 +267,13 @@ final class ModuleLoader {
     private void checkBinding(Token token, Module module) {
         if (module.imports().containsKey(token.text()))
             throw new FalconError(token, "A variable cannot use the module alias '" + token.text() + "'.");
+    }
+    private String qualify(String name, Module module) {
+        return name == null ? null : module.namespace() + name;
+    }
+    private List<Parameter> qualify(List<Parameter> parameters, Module module) {
+        return parameters.stream().map(parameter -> new Parameter(parameter.name(), parameter.type(),
+                qualify(parameter.structName(), module))).toList();
     }
 
     String diagnostic(FalconError error, String fallbackFile, String fallbackSource) {

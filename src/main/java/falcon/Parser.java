@@ -35,7 +35,8 @@ final class Parser {
                 Token name = name(); newlines(); expect("{"); separators();
                 List<StructField> fields = new ArrayList<>();
                 while (!at("}") && peek().kind() != Token.Kind.EOF) {
-                    Token field = name(); expect(":"); fields.add(new StructField(field, type()));
+                    Token field = name(); expect(":"); TypeSpec fieldType = type();
+                    fields.add(new StructField(field, fieldType.type(), fieldType.structName()));
                     if (match(",")) separators(); else separators();
                 }
                 expect("}"); separators(); structs.add(new StructDecl(name, List.copyOf(fields))); continue;
@@ -46,34 +47,35 @@ final class Parser {
             List<Parameter> params = new ArrayList<>();
             if (!at(")")) do {
                 newlines(); Token param = name(); expect(":");
-                params.add(new Parameter(param, type())); newlines();
+                TypeSpec parameterType = type();
+                params.add(new Parameter(param, parameterType.type(), parameterType.structName())); newlines();
             } while (match(","));
             expect(")");
-            Type result = match("->") ? type() : Type.VOID;
-            functions.add(new Function(name, List.copyOf(params), result, block()));
+            TypeSpec result = match("->") ? type() : new TypeSpec(Type.VOID, null);
+            functions.add(new Function(name, List.copyOf(params), result.type(), result.structName(), block(), ""));
             separators();
         }
         return new Program(List.copyOf(functions), List.copyOf(imports), List.copyOf(structs));
     }
 
-    private Type type() {
+    private TypeSpec type() {
         Token token = advance();
         if (token.kind() == Token.Kind.NAME) {
             return switch (token.text()) {
-                case "int" -> Type.INT; case "float" -> Type.FLOAT; case "bool" -> Type.BOOL;
-                case "string" -> Type.STRING; case "void" -> Type.VOID;
-                case "number" -> Type.NUMBER; case "any" -> Type.ANY;
+                case "int" -> new TypeSpec(Type.INT, null); case "float" -> new TypeSpec(Type.FLOAT, null); case "bool" -> new TypeSpec(Type.BOOL, null);
+                case "string" -> new TypeSpec(Type.STRING, null); case "void" -> new TypeSpec(Type.VOID, null);
+                case "number" -> new TypeSpec(Type.NUMBER, null); case "any" -> new TypeSpec(Type.ANY, null);
                 case "list" -> {
                     if (match("<")) {
-                        Type element = type(); expect(">");
-                        if (element == Type.VOID || element == Type.RANGE || element == Type.MAP)
+                        TypeSpec element = type(); expect(">");
+                        if (element.type() == Type.VOID || element.type() == Type.RANGE || element.type() == Type.MAP)
                             throw error(token, "List elements must have a value type, such as int, bool, string, number or any.");
-                        yield Type.listOf(element);
+                        yield new TypeSpec(Type.listOf(element.type()), element.type() == Type.STRUCT ? element.structName() : null);
                     }
-                    yield Type.LIST;
+                    yield new TypeSpec(Type.LIST, null);
                 }
-                case "map" -> Type.MAP;
-                default -> throw error(token, "Unknown type '" + token.text() + "'.");
+                case "map" -> new TypeSpec(Type.MAP, null);
+                default -> new TypeSpec(Type.STRUCT, token.text());
             };
         }
         throw error(token, "Expected a type: int, float, number, bool, string, list, map, any or void.");
@@ -91,9 +93,10 @@ final class Parser {
     private Stmt statement() {
         Token start = peek();
         if (match("var") || match("fix")) {
-            Token name = name(); Type annotation = match(":") ? type() : null;
+            Token name = name(); TypeSpec annotation = match(":") ? type() : null;
             expect("="); newlines(); Expr value = expression(); endStatement();
-            return new Binding(start, name, annotation, value, start.text().equals("var"));
+            return new Binding(start, name, annotation == null ? null : annotation.type(),
+                    annotation == null ? null : annotation.structName(), value, start.text().equals("var"));
         }
         if (match("if") || match("when")) return conditional(start);
         if (at("elseif") || at("else")) throw error(peek(), "'" + peek().text() + "' must follow an if/elseif block.");

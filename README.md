@@ -169,8 +169,9 @@ Lists and maps can also hold `null` and nested containers. `any` is distinct fro
 `number`: extract typed values with
 `c.asNumber`, `c.asInt`, `c.asString`, `c.asList`, etc. These validate at runtime;
 use `text.toNumber` to parse a string. Indexing accepts integer list/string indices
-or string map keys. Bounds and missing keys are diagnosed. Lists support
-`scores[0] = 12`; use `c.put` to update maps.
+or string map keys. Bounds and missing keys are diagnosed. Lists and maps support
+index assignment, such as `scores[0] = 12` and `profile["name"] = "Falcon"`.
+Nested list writes such as `grid[1][0] = 7` are supported too.
 
 Containers have reference semantics. `fix` prevents rebinding but does not freeze
 their contents. `each` iterates over a shallow snapshot of a list and gives each
@@ -364,8 +365,9 @@ time spent waiting on console input, sleeping, network requests, or large host
 operations. Catch runtime errors with `try { ... } catch (error) { ... }`; the
 catch variable contains the error message.
 
-Simple structs can be declared with typed fields, constructed positionally, and
-read or updated by field:
+Struct names can be used for fields, function parameters and results, and typed
+lists such as `list<Point>`. Structs can be declared with typed fields,
+constructed positionally, and read or updated by field:
 
 ```fc
 struct Point {
@@ -378,6 +380,9 @@ func main() {
     say(point.x, point.y)
 }
 ```
+
+Structs print with their type and named fields, and equality compares their
+types and field values.
 
 ## VS Code
 

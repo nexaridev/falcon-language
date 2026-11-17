@@ -8,9 +8,36 @@ import java.util.IdentityHashMap;
 final class Values {
     private Values() {}
     static String display(Object value) {
-        if (value instanceof List<?> || value instanceof Map<?, ?>) {
-            try { return Json.write(value); }
-            catch (IllegalArgumentException e) { return "<cyclic or deeply nested collection>"; }
+        if (value instanceof List<?> || value instanceof Map<?, ?> || value instanceof Interpreter.StructValue)
+            return render(value, new IdentityHashMap<>(), 0);
+        return String.valueOf(value);
+    }
+    private static String render(Object value, IdentityHashMap<Object, Boolean> active, int depth) {
+        if (depth > 128) return "<deeply nested value>";
+        if (value instanceof Interpreter.StructValue struct) {
+            if (active.put(struct, true) != null) return "<cycle>";
+            try {
+                int namespace = struct.name.lastIndexOf("::");
+                String displayName = namespace < 0 ? struct.name : struct.name.substring(namespace + 2);
+                return displayName + "(" + struct.fields.entrySet().stream()
+                        .map(entry -> entry.getKey() + "=" + render(entry.getValue(), active, depth + 1))
+                        .collect(java.util.stream.Collectors.joining(", ")) + ")";
+            } finally { active.remove(struct); }
+        }
+        if (value instanceof List<?> list) {
+            if (active.put(value, true) != null) return "<cycle>";
+            try {
+                return "[" + list.stream().map(item -> render(item, active, depth + 1))
+                        .collect(java.util.stream.Collectors.joining(", ")) + "]";
+            } finally { active.remove(value); }
+        }
+        if (value instanceof Map<?, ?> map) {
+            if (active.put(value, true) != null) return "<cycle>";
+            try {
+                return "{" + map.entrySet().stream()
+                        .map(entry -> Json.write(entry.getKey()) + ": " + render(entry.getValue(), active, depth + 1))
+                        .collect(java.util.stream.Collectors.joining(", ")) + "}";
+            } finally { active.remove(value); }
         }
         return String.valueOf(value);
     }
@@ -26,6 +53,15 @@ final class Values {
             seen.put(a, b);
             try {
                 for (int i = 0; i < x.size(); i++) if (!equal(x.get(i), y.get(i), seen, depth + 1)) return false;
+                return true;
+            } finally { seen.remove(a); }
+        }
+        if (a instanceof Interpreter.StructValue x && b instanceof Interpreter.StructValue y) {
+            if (!x.name.equals(y.name) || !x.fields.keySet().equals(y.fields.keySet())) return false;
+            if (seen.containsKey(a)) return seen.get(a) == b;
+            seen.put(a, b);
+            try {
+                for (String key : x.fields.keySet()) if (!equal(x.fields.get(key), y.fields.get(key), seen, depth + 1)) return false;
                 return true;
             } finally { seen.remove(a); }
         }

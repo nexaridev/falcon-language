@@ -6,39 +6,49 @@ final class Ast {
     private Ast() {}
     enum Type {
         INT, FLOAT, NUMBER, BOOL, STRING, VOID, RANGE, ANY, LIST, LIST_INT, LIST_FLOAT,
-        LIST_NUMBER, LIST_BOOL, LIST_STRING, MAP, STRUCT;
+        LIST_NUMBER, LIST_BOOL, LIST_STRING, LIST_STRUCT, MAP, STRUCT;
         boolean isList() { return this == LIST || name().startsWith("LIST_"); }
         Type elementType() {
             return switch (this) {
                 case LIST_INT -> INT; case LIST_FLOAT -> FLOAT; case LIST_NUMBER -> NUMBER;
-                case LIST_BOOL -> BOOL; case LIST_STRING -> STRING; default -> ANY;
+                case LIST_BOOL -> BOOL; case LIST_STRING -> STRING; case LIST_STRUCT -> STRUCT; default -> ANY;
             };
         }
         static Type listOf(Type element) {
             return switch (element) {
                 case INT -> LIST_INT; case FLOAT -> LIST_FLOAT; case NUMBER -> LIST_NUMBER;
-                case BOOL -> LIST_BOOL; case STRING -> LIST_STRING; default -> LIST;
+                case BOOL -> LIST_BOOL; case STRING -> LIST_STRING;
+                case STRUCT -> LIST_STRUCT; default -> LIST;
             };
         }
         @Override public String toString() {
             return switch (this) {
                 case LIST_INT -> "list<int>"; case LIST_FLOAT -> "list<float>";
                 case LIST_NUMBER -> "list<number>"; case LIST_BOOL -> "list<bool>";
-                case LIST_STRING -> "list<string>"; case STRUCT -> "struct"; default -> name().toLowerCase();
+                case LIST_STRING -> "list<string>"; case LIST_STRUCT -> "list<struct>";
+                case STRUCT -> "struct"; default -> name().toLowerCase();
             };
         }
     }
+    record TypeSpec(Type type, String structName) {}
     record Import(Token token, String path, Token alias, boolean named) {}
     record Program(List<Function> functions, List<Import> imports, List<StructDecl> structs) {
         Program(List<Function> functions) { this(functions, List.of(), List.of()); }
         Program(List<Function> functions, List<Import> imports) { this(functions, imports, List.of()); }
     }
-    record StructField(Token name, Type type) {}
+    record StructField(Token name, Type type, String structName) {
+        StructField(Token name, Type type) { this(name, type, null); }
+    }
     record StructDecl(Token name, List<StructField> fields) {}
-    record Parameter(Token name, Type type) {}
-    record Function(Token name, List<Parameter> parameters, Type result, Block body, String namespace) {
+    record Parameter(Token name, Type type, String structName) {
+        Parameter(Token name, Type type) { this(name, type, null); }
+    }
+    record Function(Token name, List<Parameter> parameters, Type result, String resultStructName, Block body, String namespace) {
         Function(Token name, List<Parameter> parameters, Type result, Block body) {
-            this(name, parameters, result, body, "");
+            this(name, parameters, result, null, body, "");
+        }
+        Function(Token name, List<Parameter> parameters, Type result, Block body, String namespace) {
+            this(name, parameters, result, null, body, namespace);
         }
         String key() { return namespace + name.text(); }
     }
@@ -47,7 +57,11 @@ final class Ast {
         Token token();
     }
     record Block(Token token, List<Stmt> statements) implements Stmt {}
-    record Binding(Token token, Token name, Type annotation, Expr value, boolean mutable) implements Stmt {}
+    record Binding(Token token, Token name, Type annotation, String annotationStructName, Expr value, boolean mutable) implements Stmt {
+        Binding(Token token, Token name, Type annotation, Expr value, boolean mutable) {
+            this(token, name, annotation, null, value, mutable);
+        }
+    }
     record Assign(Token token, Expr value) implements Stmt {}
     record IndexAssign(Token token, Expr target, Expr index, Expr value) implements Stmt {}
     record FieldAssign(Token token, Expr target, Token field, Expr value) implements Stmt {}
