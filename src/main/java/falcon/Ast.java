@@ -6,7 +6,7 @@ final class Ast {
     private Ast() {}
     enum Type {
         INT, FLOAT, NUMBER, BOOL, STRING, VOID, RANGE, ANY, LIST, LIST_INT, LIST_FLOAT,
-        LIST_NUMBER, LIST_BOOL, LIST_STRING, LIST_STRUCT, MAP, STRUCT;
+        LIST_NUMBER, LIST_BOOL, LIST_STRING, LIST_STRUCT, MAP, STRUCT, FUNCTION;
         boolean isList() { return this == LIST || name().startsWith("LIST_"); }
         Type elementType() {
             return switch (this) {
@@ -26,7 +26,7 @@ final class Ast {
                 case LIST_INT -> "list<int>"; case LIST_FLOAT -> "list<float>";
                 case LIST_NUMBER -> "list<number>"; case LIST_BOOL -> "list<bool>";
                 case LIST_STRING -> "list<string>"; case LIST_STRUCT -> "list<struct>";
-                case STRUCT -> "struct"; default -> name().toLowerCase();
+                case STRUCT -> "struct"; case FUNCTION -> "function"; default -> name().toLowerCase();
             };
         }
     }
@@ -53,7 +53,7 @@ final class Ast {
         String key() { return namespace + name.text(); }
     }
 
-    sealed interface Stmt permits Block, Binding, Assign, IndexAssign, FieldAssign, ExprStmt, When, While, Each, Give, TryCatch {
+    sealed interface Stmt permits Block, Binding, Assign, IndexAssign, FieldAssign, ExprStmt, When, While, Each, Give, TryCatch, Defer {
         Token token();
     }
     record Block(Token token, List<Stmt> statements) implements Stmt {}
@@ -71,11 +71,17 @@ final class Ast {
     record Each(Token token, Token name, Expr iterable, Block body) implements Stmt {}
     record Give(Token token, Expr value) implements Stmt {}
     record TryCatch(Token token, Block body, Token errorName, Block handler) implements Stmt {}
+    record Defer(Token token, Block body) implements Stmt {}
 
-    sealed interface Expr permits Literal, Name, Unary, Binary, Call, ListExpr, Index, Field { Token token(); }
+    sealed interface Expr permits Literal, Name, Unary, Binary, Call, ListExpr, Index, Field, ConditionalExpr, Interpolated, MatchExpr, LambdaExpr { Token token(); }
     record ListExpr(Token token, List<Expr> elements) implements Expr {}
     record Index(Token token, Expr target, Expr index) implements Expr {}
     record Field(Token token, Expr target, Token name) implements Expr {}
+    record ConditionalExpr(Token token, Expr condition, Expr yes, Expr no) implements Expr {}
+    record Interpolated(Token token, List<String> fragments, List<Expr> expressions) implements Expr {}
+    record MatchCase(Expr label, Expr value, boolean fallback) {}
+    record MatchExpr(Token token, Expr target, List<MatchCase> cases) implements Expr {}
+    record LambdaExpr(Token token, List<Parameter> parameters, Expr body) implements Expr {}
     record Literal(Token token, Object value, Type type) implements Expr {}
     record Name(Token token) implements Expr {}
     record Unary(Token token, Expr value) implements Expr {}

@@ -17,6 +17,7 @@ final class Interpreter {
         final Map<String, Object> fields = new java.util.LinkedHashMap<>();
         StructValue(String name) { this.name = name; }
     }
+    private record LambdaValue(List<Parameter> parameters, Expr body, Scope closure, Type result) {}
     private static final class Cell {
         final Type type;
         Object value;
@@ -25,6 +26,7 @@ final class Interpreter {
     private static final class Scope {
         final Scope parent;
         final Map<String, Cell> values = new HashMap<>();
+        final List<Block> deferred = new ArrayList<>();
         Scope(Scope parent) { this.parent = parent; }
         Cell find(String name) {
             if (values.containsKey(name)) return values.get(name);
@@ -63,8 +65,8 @@ final class Interpreter {
         tick(callSite);
         if (depth >= 256) throw new FalconError(callSite, "Maximum function call depth (256) exceeded.");
         depth++;
+        Scope scope = new Scope(null);
         try {
-            Scope scope = new Scope(null);
             for (int i = 0; i < args.size(); i++) {
                 Parameter param = function.parameters().get(i);
                 scope.values.put(param.name().text(), new Cell(param.type(), args.get(i)));
@@ -72,14 +74,19 @@ final class Interpreter {
             try { statements(function.body(), scope); }
             catch (Returned returned) { return coerce(function.result(), returned.value); }
             return null;
-        } finally { depth--; }
+        } finally {
+            try { runDefers(scope); } finally { depth--; }
+        }
     }
     private void statements(Block block, Scope scope) {
         for (Stmt statement : block.statements()) execute(statement, scope);
     }
     private void execute(Stmt statement, Scope scope) {
         tick(statement.token());
-        if (statement instanceof Block block) statements(block, new Scope(scope));
+        if (statement instanceof Block block) {
+            Scope nested = new Scope(scope);
+            try { statements(block, nested); } finally { runDefers(nested); }
+        }
         else if (statement instanceof Binding binding) {
             Object value = evaluate(binding.value(), scope);
             Type type = binding.annotation() == null ? checker.types.get(binding.value()) : binding.annotation();
@@ -107,7 +114,7 @@ final class Interpreter {
                 for (Object value : new ArrayList<>(list)) {
                     tick(each.token());
                     Scope iteration = new Scope(scope); iteration.values.put(each.name().text(), new Cell(Type.ANY, value));
-                    statements(each.body(), iteration);
+                    execute(each.body(), iteration);
                 }
                 return;
             }
@@ -122,7 +129,7 @@ final class Interpreter {
                 iteration.values.clear();
                 iteration.values.put(each.name().text(), loopVariable);
                 loopVariable.value = i;
-                statements(each.body(), iteration);
+                execute(each.body(), iteration);
             }
         } else if (statement instanceof Give give) {
             throw new Returned(give.value() == null ? null : evaluate(give.value(), scope));
@@ -133,6 +140,8 @@ final class Interpreter {
                 handler.values.put(attempt.errorName().text(), new Cell(Type.STRING, error.getMessage()));
                 execute(attempt.handler(), handler);
             }
+        } else if (statement instanceof Defer defer) {
+            scope.deferred.add(defer.body());
         }
     }
     private Object evaluate(Expr expr, Scope scope) {
@@ -146,6 +155,28 @@ final class Interpreter {
             }
             if (expr instanceof Index index) return Values.index(evaluate(index.target(), scope), evaluate(index.index(), scope), index.token());
             if (expr instanceof Field field) return ((StructValue) evaluate(field.target(), scope)).fields.get(field.name().text());
+            if (expr instanceof ConditionalExpr conditional)
+                return (boolean) evaluate(conditional.condition(), scope)
+                        ? evaluate(conditional.yes(), scope) : evaluate(conditional.no(), scope);
+            if (expr instanceof Interpolated interpolated) {
+                StringBuilder value = new StringBuilder(interpolated.fragments().get(0));
+                for (int i = 0; i < interpolated.expressions().size(); i++) {
+                    value.append(Values.display(evaluate(interpolated.expressions().get(i), scope)));
+                    value.append(interpolated.fragments().get(i + 1));
+                }
+                return value.toString();
+            }
+            if (expr instanceof MatchExpr match) {
+                Object target = evaluate(match.target(), scope);
+                Expr fallback = null;
+                for (MatchCase branch : match.cases()) {
+                    if (branch.fallback()) fallback = branch.value();
+                    else if (Values.equal(target, evaluate(branch.label(), scope))) return evaluate(branch.value(), scope);
+                }
+                return evaluate(fallback, scope);
+            }
+            if (expr instanceof LambdaExpr lambda)
+                return new LambdaValue(lambda.parameters(), lambda.body(), scope, checker.types.get(lambda));
             if (expr instanceof Name name) return scope.find(name.token().text()).value;
             if (expr instanceof Unary unary) {
                 Object value = evaluate(unary.value(), scope);
@@ -173,7 +204,12 @@ final class Interpreter {
                 }
                 if (StandardLibrary.function(call.target()) != null)
                     return runtime.invoke(call.target(), args, call.token());
-                return invoke(checker.functions.get(call.target()), args, call.token());
+                Function function = checker.functions.get(call.target());
+                if (function != null) return invoke(function, args, call.token());
+                Object callable = scope.find(call.token().text()).value;
+                if (!(callable instanceof LambdaValue lambda))
+                    throw new FalconError(call.token(), "That value is not callable.");
+                return invoke(lambda, args, call.token());
             }
             if (expr instanceof Binary binary) {
                 Object left = evaluate(binary.left(), scope);
@@ -214,6 +250,23 @@ final class Interpreter {
             }
             throw new IllegalStateException("Unknown expression");
         } catch (ArithmeticException e) { throw new FalconError(expr.token(), "Integer overflow; use smaller values or float."); }
+    }
+    private Object invoke(LambdaValue lambda, List<Object> args, Token callSite) {
+        tick(callSite);
+        if (depth >= 256) throw new FalconError(callSite, "Maximum function call depth (256) exceeded.");
+        depth++;
+        try {
+            Scope scope = new Scope(lambda.closure());
+            for (int i = 0; i < args.size(); i++) {
+                Parameter parameter = lambda.parameters().get(i);
+                scope.values.put(parameter.name().text(), new Cell(parameter.type(), args.get(i)));
+            }
+            return evaluate(lambda.body(), scope);
+        } finally { depth--; }
+    }
+    private void runDefers(Scope scope) {
+        for (int i = scope.deferred.size() - 1; i >= 0; i--) execute(scope.deferred.get(i), scope);
+        scope.deferred.clear();
     }
     private void tick(Token token) {
         if (--remaining < 0) throw new FalconError(token, "Execution step limit reached; check your loops or increase --max-steps.");

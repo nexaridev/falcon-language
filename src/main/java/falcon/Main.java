@@ -22,11 +22,13 @@ public final class Main {
 
     static int cli(String[] args, InputStream in, PrintStream out, PrintStream err) {
         if (args.length == 0 || args[0].equals("--help") || args[0].equals("help")) {
-            out.println("Falcon 0.11.0 — Java reference interpreter\n"
+            out.println("Falcon 0.12.0 — Java reference interpreter\n"
                     + "Usage: falcon <run|check|tokens> <file.fc> [--max-steps N]\n"
                     + "       falcon install <github-owner/repository>\n"
                     + "       falcon setup\n"
                     + "       falcon repl\n"
+                    + "       falcon jvm\n"
+                    + "       falcon build <file.fc> [--output <directory>] [--args <defaults>]\n"
                     + "       falcon cmd <command>\n"
                     + "       falcon --version\n"
                     + "       falcon check <file.fc> [--stdin] [--library]\n"
@@ -36,10 +38,27 @@ public final class Main {
                     + "tokens Print lexer tokens");
             return 0;
         }
-        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.11.0"); return 0; }
+        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.12.0"); return 0; }
+        if (args[0].equals("jvm")) {
+            if (args.length != 1) { err.println("Usage: falcon jvm"); return 2; }
+            return jvm(in, out, err);
+        }
         if (args[0].equals("repl")) {
             if (args.length != 1) { err.println("Usage: falcon repl"); return 2; }
             return repl(in, out, err);
+        }
+        if (args[0].equals("build") || args[0].equals("bu")) {
+            if (args.length < 2) { err.println("Usage: falcon build <file.fc> [--output <directory>] [--args <defaults>]"); return 2; }
+            Path source = Path.of(args[1].endsWith(".") ? args[1] + "fc" : args[1]);
+            Path destination = null;
+            String defaults = "";
+            for (int i = 2; i < args.length; i++) {
+                if (args[i].equals("--output") && i + 1 < args.length) destination = Path.of(args[++i]);
+                else if (args[i].equals("--args") && i + 1 < args.length) defaults = args[++i];
+                else { err.println("Build accepts --output <directory> and --args <defaults>."); return 2; }
+            }
+            try { return BuildCommand.build(source, destination, defaults, out, err); }
+            catch (Exception e) { err.println("Falcon couldn't build that executable: " + e.getMessage()); return 1; }
         }
         if (args[0].equals("setup")) {
             if (args.length != 1) { err.println("Usage: falcon setup"); return 2; }
@@ -112,11 +131,42 @@ public final class Main {
                 return 1;
             }
             if (args[0].equals("check")) out.println("OK: " + args[1]);
-            else new Interpreter(checker, out, limit, in, arguments).run();
+            else {
+                long executionLimit = limit;
+                List<String> programArguments = arguments;
+                runTimed(() -> new Interpreter(checker, out, executionLimit, in, programArguments).run(), out);
+            }
             return 0;
         } catch (FalconError e) { err.println(loader.diagnostic(e, args[1], source)); return 1; }
         catch (IOException e) { err.println("Cannot read '" + args[1] + "': " + e.getMessage()); return 2; }
         catch (StackOverflowError e) { err.println("Error: program nesting exceeds the implementation limit."); return 1; }
+    }
+
+    private static void runTimed(Runnable program, PrintStream out) {
+        long started = System.nanoTime();
+        java.util.concurrent.atomic.AtomicBoolean reported = new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable report = () -> {
+            if (reported.compareAndSet(false, true)) out.println("Ended in " + elapsed(System.nanoTime() - started) + ".");
+        };
+        Thread shutdown = new Thread(report, "falcon-run-duration");
+        Runtime.getRuntime().addShutdownHook(shutdown);
+        try { program.run(); }
+        finally {
+            report.run();
+            try { Runtime.getRuntime().removeShutdownHook(shutdown); }
+            catch (IllegalStateException ignored) { }
+        }
+    }
+
+    private static String elapsed(long nanoseconds) {
+        long milliseconds = nanoseconds / 1_000_000;
+        String precise = String.format(java.util.Locale.ROOT, "%,dms", milliseconds);
+        if (milliseconds < 1000) return precise;
+        String seconds = String.format(java.util.Locale.ROOT, "%.3fs", milliseconds / 1000.0);
+        if (milliseconds < 60_000) return precise + " (" + seconds + ")";
+        String minutesAndSeconds = (milliseconds / 60_000) + "m, "
+                + String.format(java.util.Locale.ROOT, "%02d.%03ds", (milliseconds / 1000) % 60, milliseconds % 1000);
+        return precise + " (" + minutesAndSeconds + ")";
     }
 
     private static int setup(Path root, PrintStream out, PrintStream err) {
@@ -197,5 +247,52 @@ public final class Main {
                 err.println("Couldn't read input: " + error.getMessage()); return 1;
             }
         }
+    }
+
+    private static int jvm(InputStream in, PrintStream out, PrintStream err) {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        java.io.Console console = in == System.in ? System.console() : null;
+        out.println("Falcon JVM console. Type CLI commands; use :quit to exit.");
+        while (true) {
+            try {
+                String line;
+                if (console != null) line = console.readLine(">>> ");
+                else { out.print(">>> "); out.flush(); line = reader.readLine(); }
+                if (line == null || line.strip().equals(":quit") || line.strip().equals(".exit")) return 0;
+                String command = line.strip();
+                if (command.startsWith(">>>")) command = command.substring(3).stripLeading();
+                if (command.startsWith("falcon ")) command = command.substring(7).stripLeading();
+                if (command.isBlank()) continue;
+                List<String> words;
+                try { words = splitCommand(command); }
+                catch (IllegalArgumentException error) { err.println("Falcon console: " + error.getMessage()); continue; }
+                if (words.isEmpty()) continue;
+                String first = words.get(0);
+                if (first.length() >= 2 && "build".startsWith(first)) words.set(0, "build");
+                if (words.get(0).equals("build") && words.size() > 1 && words.get(1).endsWith("."))
+                    words.set(1, words.get(1) + "fc");
+                int status = cli(words.toArray(String[]::new), in, out, err);
+                if (status != 0) out.println("Falcon command finished with code " + status + ".");
+            } catch (IOException error) {
+                err.println("Couldn't read console input: " + error.getMessage()); return 1;
+            }
+        }
+    }
+
+    private static List<String> splitCommand(String command) {
+        var words = new java.util.ArrayList<String>();
+        var current = new StringBuilder();
+        boolean quoted = false; char quote = 0;
+        for (int i = 0; i < command.length(); i++) {
+            char c = command.charAt(i);
+            if ((c == '"' || c == '\'') && (!quoted || c == quote)) {
+                if (quoted) quoted = false; else { quoted = true; quote = c; }
+            } else if (Character.isWhitespace(c) && !quoted) {
+                if (!current.isEmpty()) { words.add(current.toString()); current.setLength(0); }
+            } else current.append(c);
+        }
+        if (quoted) throw new IllegalArgumentException("close the quote in the command.");
+        if (!current.isEmpty()) words.add(current.toString());
+        return words;
     }
 }

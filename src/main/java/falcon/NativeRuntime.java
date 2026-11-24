@@ -51,6 +51,7 @@ final class NativeRuntime implements AutoCloseable {
     private String pending;
     private boolean loaded;
     private HttpClient httpClient;
+    private SqlRuntime sql;
     NativeRuntime(InputStream input, PrintStream output, List<String> arguments) {
         this.input = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
         this.output = output; this.arguments = List.copyOf(arguments);
@@ -70,6 +71,10 @@ final class NativeRuntime implements AutoCloseable {
             if (operation.startsWith("crypto.")) return crypto(operation, args);
             if (operation.startsWith("regex.")) return regex(operation, args);
             if (operation.startsWith("compression.")) return compression(operation, args);
+            if (operation.startsWith("sql.")) {
+                if (sql == null) sql = new SqlRuntime();
+                return sql.invoke(operation, args);
+            }
             if (operation.startsWith("gui.")) {
                 if (gui == null) gui = new GuiRuntime();
                 return gui.invoke(operation, args);
@@ -89,6 +94,7 @@ final class NativeRuntime implements AutoCloseable {
         if (gui != null) gui.close();
         if (telegram != null) telegram.close();
         if (images != null) images.close();
+        if (sql != null) sql.close();
     }
 
     private Object execute(String op, List<Object> a, Token site) throws IOException, InterruptedException {

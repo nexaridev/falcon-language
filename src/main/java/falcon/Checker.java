@@ -5,14 +5,20 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import static falcon.Ast.*;
 
 /** Resolves scopes and checks every function before execution, including unused code. */
 final class Checker {
-    record Symbol(Type type, boolean mutable, String structName, Type listElementType, String listElementStructName) {
-        Symbol(Type type, boolean mutable) { this(type, mutable, null, null, null); }
-        Symbol(Type type, boolean mutable, String structName) { this(type, mutable, structName, null, null); }
+    record FunctionType(List<Parameter> parameters, Type result, String resultStructName) {}
+    record Symbol(Type type, boolean mutable, String structName, Type listElementType, String listElementStructName,
+                  FunctionType functionType) {
+        Symbol(Type type, boolean mutable) { this(type, mutable, null, null, null, null); }
+        Symbol(Type type, boolean mutable, String structName) { this(type, mutable, structName, null, null, null); }
+        Symbol(Type type, boolean mutable, String structName, Type listElementType, String listElementStructName) {
+            this(type, mutable, structName, listElementType, listElementStructName, null);
+        }
     }
     final Map<String, Function> functions = new LinkedHashMap<>();
     final Map<Expr, Type> types = new IdentityHashMap<>();
@@ -21,6 +27,7 @@ final class Checker {
     final Map<Expr, String> structNames = new IdentityHashMap<>();
     final Map<Expr, String> listStructNames = new IdentityHashMap<>();
     final Map<Expr, Type> listElementTypes = new IdentityHashMap<>();
+    final Map<Expr, FunctionType> functionTypes = new IdentityHashMap<>();
     private final Deque<Map<String, Symbol>> scopes = new ArrayDeque<>();
     private Type result;
     private String resultStructName;
@@ -106,7 +113,8 @@ final class Checker {
                         ? (binding.annotation() == null ? listElementTypes.get(binding.value()) : type.elementType()) : null;
                 String elementStruct = type.isList()
                         ? (binding.annotation() == null ? listStructNames.get(binding.value()) : binding.annotationStructName()) : null;
-                declare(binding.name(), new Symbol(type, binding.mutable(), structName, listElement, elementStruct));
+                declare(binding.name(), new Symbol(type, binding.mutable(), structName, listElement, elementStruct,
+                        functionTypes.get(binding.value())));
             } catch (FalconError error) {
                 String name = binding.name().text();
                 if (!scopes.peek().containsKey(name) && !functions.containsKey(namespace + name) && !name.equals("say")) {
@@ -182,6 +190,8 @@ final class Checker {
                 handlerReturns = statements(attempt.handler());
             } finally { scopes.pop(); }
             return bodyReturns && handlerReturns;
+        } else if (statement instanceof Defer defer) {
+            statement(defer.body());
         }
         return false;
     }
@@ -238,11 +248,43 @@ final class Checker {
             if (type == Type.STRUCT) structNames.put(fieldExpr, declaration.structName());
             if (type == Type.LIST_STRUCT) listStructNames.put(fieldExpr, declaration.structName());
         }
+        else if (expr instanceof ConditionalExpr conditional) {
+            require(conditional.token(), Type.BOOL, expression(conditional.condition()));
+            Type yes = expression(conditional.yes()), no = expression(conditional.no());
+            type = mergeTypes(conditional.token(), yes, no);
+            String yesStruct = structNames.get(conditional.yes()), noStruct = structNames.get(conditional.no());
+            if (type == Type.STRUCT && yesStruct != null && yesStruct.equals(noStruct)) structNames.put(expr, yesStruct);
+            String leftStruct = listStructNames.get(conditional.yes()), rightStruct = listStructNames.get(conditional.no());
+            if (type == Type.LIST_STRUCT && leftStruct != null && leftStruct.equals(rightStruct)) listStructNames.put(expr, leftStruct);
+        }
+        else if (expr instanceof Interpolated interpolated) {
+            for (Expr part : interpolated.expressions()) printable(part.token(), expression(part));
+            type = Type.STRING;
+        }
+        else if (expr instanceof MatchExpr match) {
+            Type target = expression(match.target());
+            Type resultType = null; String resultStruct = null;
+            for (MatchCase branch : match.cases()) {
+                if (!branch.fallback()) compatible(match.target().token(), target, expression(branch.label()));
+                Type branchType = expression(branch.value());
+                if (resultType == null) {
+                    resultType = branchType; resultStruct = structNames.get(branch.value());
+                } else {
+                    Type merged = mergeTypes(match.token(), resultType, branchType);
+                    if (merged == Type.STRUCT && !java.util.Objects.equals(resultStruct, structNames.get(branch.value())))
+                        fail(match.token(), "All match branches must return the same struct type.");
+                    resultType = merged;
+                }
+            }
+            type = resultType == null ? Type.ANY : resultType;
+            if (type == Type.STRUCT && resultStruct != null) structNames.put(expr, resultStruct);
+        }
         else if (expr instanceof Name name) {
             Symbol symbol = resolve(name.token()); type = symbol.type();
             if (symbol.structName() != null) structNames.put(expr, symbol.structName());
             if (symbol.listElementType() != null) listElementTypes.put(expr, symbol.listElementType());
             if (symbol.listElementStructName() != null) listStructNames.put(expr, symbol.listElementStructName());
+            if (symbol.functionType() != null) functionTypes.put(expr, symbol.functionType());
         }
         else if (expr instanceof Unary unary) {
             Type operand = expression(unary.value());
@@ -270,6 +312,22 @@ final class Checker {
                             : left == Type.FLOAT || right == Type.FLOAT ? Type.FLOAT : Type.INT;
                 };
             }
+        } else if (expr instanceof LambdaExpr lambda) {
+            scopes.push(new HashMap<>());
+            try {
+                for (Parameter parameter : lambda.parameters()) {
+                    valueType(parameter.name(), parameter.type());
+                    validateStructType(parameter.name(), parameter.type(), parameter.structName());
+                    declare(parameter.name(), new Symbol(parameter.type(), false,
+                            parameter.type() == Type.STRUCT ? parameter.structName() : null,
+                            null, parameter.type() == Type.LIST_STRUCT ? parameter.structName() : null));
+                }
+                Type bodyType = expression(lambda.body());
+                if (bodyType == Type.VOID || bodyType == Type.RANGE) fail(lambda.token(), "A lambda must return a value.");
+                FunctionType signature = new FunctionType(lambda.parameters(), bodyType, structNames.get(lambda.body()));
+                functionTypes.put(lambda, signature);
+                type = Type.FUNCTION;
+            } finally { scopes.pop(); }
         } else if (expr instanceof Call call) {
             StructDecl struct = structs.get(call.target());
             if (struct != null) {
@@ -288,17 +346,31 @@ final class Checker {
             } else {
                 Function function = functions.get(call.target());
                 if (function == null) function = StandardLibrary.function(call.target());
-                if (function == null) throw new FalconError(call.token(), "Unknown function '" + call.token().text() + "'. I couldn't find it; check the spelling or import its module.");
-                if (function.parameters().size() != call.arguments().size())
-                    fail(call.token(), "Expected " + function.parameters().size() + " arguments, got " + call.arguments().size() + ".");
-                for (int i = 0; i < call.arguments().size(); i++) {
-                    Expr argument = call.arguments().get(i);
-                    Parameter parameter = function.parameters().get(i);
-                    compatibleRef(argument.token(), parameter.type(), parameter.structName(), expression(argument), argument);
+                if (function == null) {
+                    Symbol callable = resolve(call.token());
+                    if (callable.type() != Type.FUNCTION || callable.functionType() == null)
+                        fail(call.token(), "Variable '" + call.token().text() + "' is not callable.");
+                    FunctionType signature = callable.functionType();
+                    if (signature.parameters().size() != call.arguments().size())
+                        fail(call.token(), "Expected " + signature.parameters().size() + " arguments, got " + call.arguments().size() + ".");
+                    for (int i = 0; i < call.arguments().size(); i++) {
+                        Expr argument = call.arguments().get(i); Parameter parameter = signature.parameters().get(i);
+                        compatibleRef(argument.token(), parameter.type(), parameter.structName(), expression(argument), argument);
+                    }
+                    type = signature.result();
+                    if (type == Type.STRUCT) structNames.put(call, signature.resultStructName());
+                } else {
+                    if (function.parameters().size() != call.arguments().size())
+                        fail(call.token(), "Expected " + function.parameters().size() + " arguments, got " + call.arguments().size() + ".");
+                    for (int i = 0; i < call.arguments().size(); i++) {
+                        Expr argument = call.arguments().get(i);
+                        Parameter parameter = function.parameters().get(i);
+                        compatibleRef(argument.token(), parameter.type(), parameter.structName(), expression(argument), argument);
+                    }
+                    type = function.result();
+                    if (type == Type.STRUCT) structNames.put(call, function.resultStructName());
+                    if (type == Type.LIST_STRUCT) listStructNames.put(call, function.resultStructName());
                 }
-                type = function.result();
-                if (type == Type.STRUCT) structNames.put(call, function.resultStructName());
-                if (type == Type.LIST_STRUCT) listStructNames.put(call, function.resultStructName());
             }
         } else throw new IllegalStateException("Unknown expression");
         types.put(expr, type); return type;
@@ -336,6 +408,14 @@ final class Checker {
         if (expected == Type.NUMBER && isNumeric(actual)) return;
         if (expected == Type.FLOAT && isNumeric(actual)) return;
         require(token, expected, actual);
+    }
+    private Type mergeTypes(Token token, Type left, Type right) {
+        if (left == right) return left;
+        if (isNumeric(left) && isNumeric(right))
+            return left == Type.NUMBER || right == Type.NUMBER ? Type.NUMBER
+                    : left == Type.FLOAT || right == Type.FLOAT ? Type.FLOAT : Type.INT;
+        fail(token, "Expression branches have different types: " + left + " and " + right + ".");
+        return Type.ANY;
     }
     private void compatibleRef(Token token, Type expected, String expectedStruct, Type actual, Expr actualExpr) {
         if (expected == Type.STRUCT && actual == Type.STRUCT && expectedStruct != null) {

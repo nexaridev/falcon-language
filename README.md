@@ -1,7 +1,7 @@
 # Falcon (.fc)
 
 Falcon is a small, statically checked programming language implemented in Java.
-Version 0.11 is a working reference interpreter with a separate lexer, parser,
+Version 0.12 is a working reference interpreter with a separate lexer, parser,
 abstract syntax tree, semantic checker, and execution backend.
 
 ```fc
@@ -21,9 +21,10 @@ func square(n: int) -> int {
 
 ## Run on Windows
 
-Requires **JDK 17 or newer**. No Maven, Gradle, or external Java dependencies.
+Running Falcon requires **JDK 17 or newer**. Building Falcon downloads the
+pinned SQLite JDBC driver and bundles it into the runtime JAR.
 
-Create a ready-to-use project in the current folder with `falcon setup`. It creates `src`, `examples`, `modules`, `stdlib`, `.vscode`, and a starter `main.falcon`; copies missing standard modules and module-install helpers; and points VS Code to the local standard library. Existing files and editor settings are preserved. Start an interactive session with `falcon repl`.
+Create a ready-to-use project in the current folder with `falcon setup`. It creates `src`, `examples`, `modules`, `stdlib`, `.vscode`, and a starter `main.falcon`; copies missing standard modules and module-install helpers; and points VS Code to the local standard library. Existing files and editor settings are preserved. Start an interactive statement session with `falcon repl`, or a persistent JVM CLI console with `falcon jvm`.
 The scripts discover a JDK through `JAVA_HOME`, `javac` on `PATH`, or your
 `%USERPROFILE%\.jdks` directory. They do not change system settings.
 
@@ -33,6 +34,7 @@ The scripts discover a JDK through `JAVA_HOME`, `javac` on `PATH`, or your
 .\falcon.ps1 check examples/newlines.fc
 .\falcon.ps1 tokens examples/hello.fc
 .\build.ps1 -Test
+falcon build examples/hello.fc --args "first argument"
 ```
 
 Quick install from GitHub: `.\install.ps1`. On Linux/macOS, run `bash install.sh`. Install a public Falcon module in the current project with `falcon install owner/repository`; modules need `module.json` with a relative `.fc` `main` path, then import with `use "module-name" as alias`. VS Code checks files as you type and shows compiler errors with red underlines.
@@ -84,6 +86,37 @@ jar --create --file build/falcon.jar --main-class falcon.Main -C build/classes .
 javac --release 17 -encoding UTF-8 -cp build/classes -d build/test-classes src/test/java/falcon/*.java
 java -cp build/classes:build/test-classes falcon.FalconTest
 ```
+
+## Executable builds and SQLite
+
+falcon build file.fc creates a platform-specific jpackage app image with a JVM
+and a copy of the project sources. On Windows, its launcher is inside the
+generated program folder as program.exe; move the entire folder when sharing it.
+A JDK with jpackage is required. --args supplies default program arguments, and
+arguments passed when launching the executable are appended. falcon jvm keeps
+one JVM alive between CLI commands; >>> falcon bu ui. is accepted as
+falcon build ui.fc. Falcon source is checked and interpreted by the JVM, not
+translated to Java source before each run.
+
+SQLite is available through the sql standard module. sql.open returns a
+connection handle; prepared queries use ? placeholders and a list of values:
+
+~~~fc
+use sql
+use collections as c
+func main() {
+    var db = sql.open("app.db")
+    sql.execute(db, "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)", [])
+    sql.execute(db, "INSERT INTO users(name) VALUES (?)", ["Ada"])
+    var rows = sql.query(db, "SELECT id, name FROM users WHERE id = ?", [sql.lastInsertId(db)])
+    var user = c.asMap(rows[0])
+    say(user["name"])
+    sql.close(db)
+}
+~~~
+
+sql.query returns a list of maps keyed by column name. Use sql.begin, sql.commit,
+and sql.rollback for transactions. Always close connections.
 
 ## Language basics
 
@@ -207,6 +240,20 @@ names. Comments use `//` or nested `/* ... */`.
 
 ## Optional semicolons
 
+Strings interpolate expressions with ${expression}. Prefix the dollar sign with a backslash to print the placeholder literally.
+
+~~~fc
+var name = "Falcon"
+var greeting = "Hello, ${name}!"
+var chosen = if (ready) { "go" } else { "wait" }
+var doubled = (n: int) => n * 2
+var description = match (doubled(3)) {
+    case 6 => greeting
+    else => "other"
+}
+defer { say("leaving this scope") }
+~~~
+
 A newline ends a simple statement. Use `;` to put multiple simple statements on
 one line. A closing brace also ends the final statement in a block.
 
@@ -225,6 +272,22 @@ including the `=` in a declaration or assignment. Put an operator at the end of
 the line when continuing without parentheses. Opening braces may go on a new
 line, and `else` may follow a newline. Structured statements ending in `}` do not
 need an extra separator.
+
+An if expression chooses a value:
+
+~~~fc
+var label = if (score >= 50) { "pass" } else { "try again" }
+var doubled = (value: int) => value * 2
+var kind = match (score) {
+    case 100 => "perfect"
+    case 0 => "zero"
+    else => "score"
+}
+~~~
+
+Match expressions need an else branch. defer blocks run when their current
+function or block exits, in reverse order of registration. Strings interpolate
+expressions with ${name}; escape the dollar sign to keep the text literal.
 
 `give` immediately followed by a newline returns **without a value**. For a
 multiline return value, start parentheses on the same line:
@@ -340,7 +403,8 @@ arguments or file read errors. `check` never executes the program. `tokens` only
 runs the lexer.
 
 Execution defaults to 100 million interpreter steps and a maximum of 256 nested
-function calls. A step is an interpreter operation, not a source line. Increase
+function calls. Each run prints elapsed time, including when Ctrl+C interrupts
+it. A step is an interpreter operation, not a source line. Increase
 the step budget for larger programs:
 
 ```powershell

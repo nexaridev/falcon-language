@@ -1,0 +1,34 @@
+// SQLite database access. Query results are lists of maps keyed by column name.
+use "native/sql.fc" as native
+
+func open(filename: string) -> int {
+    give native.open(filename)
+}
+
+func close(database: int) {
+    native.close(database)
+}
+
+func execute(database: int, statement: string, parameters: list) -> int {
+    give native.execute(database, statement, parameters)
+}
+
+func query(database: int, statement: string, parameters: list) -> list {
+    give native.query(database, statement, parameters)
+}
+
+func lastInsertId(database: int) -> int {
+    give native.lastInsertId(database)
+}
+
+func begin(database: int) {
+    native.begin(database)
+}
+
+func commit(database: int) {
+    native.commit(database)
+}
+
+func rollback(database: int) {
+    native.rollback(database)
+}

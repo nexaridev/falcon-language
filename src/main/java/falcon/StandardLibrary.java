@@ -161,6 +161,14 @@ final class StandardLibrary {
         define("test.fail void message:string");
         define("http.get map url:string");
         define("http.request map method:string url:string body:string timeoutMs:int");
+        define("sql.open int filename:string");
+        define("sql.close void database:int");
+        define("sql.execute int database:int statement:string parameters:list");
+        define("sql.query list database:int statement:string parameters:list");
+        define("sql.lastInsertId int database:int");
+        define("sql.begin void database:int");
+        define("sql.commit void database:int");
+        define("sql.rollback void database:int");
     }
     private static void define(String signature) {
         String[] parts = signature.split(" ");

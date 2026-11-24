@@ -7,7 +7,7 @@ import static falcon.Ast.*;
 
 final class Parser {
     private static final Set<String> RESERVED = Set.of("func", "var", "fix", "if", "elseif", "when", "else", "while", "try", "catch",
-            "each", "in", "give", "true", "false", "int", "float", "number", "bool", "string", "void", "use", "as", "any", "list", "map", "null", "struct");
+            "each", "in", "give", "true", "false", "int", "float", "number", "bool", "string", "void", "use", "as", "any", "list", "map", "null", "struct", "match", "case", "defer");
     private final List<Token> tokens;
     private int pos, parentheses;
     Parser(List<Token> tokens) { this.tokens = tokens; }
@@ -106,6 +106,7 @@ final class Parser {
             Token errorName = name(); newlines(); expect(")");
             return new TryCatch(start, body, errorName, block());
         }
+        if (match("defer")) return new Defer(start, block());
         if (match("each")) {
             expect("("); newlines(); Token name = name(); expect("in"); newlines();
             parentheses++; Expr iterable = expression(); parentheses--;
@@ -208,8 +209,17 @@ final class Parser {
                 return new Literal(token, Long.parseLong(token.text()), Type.INT);
             } catch (NumberFormatException e) { throw error(token, "Number is too large."); }
         }
-        if (token.kind() == Token.Kind.STRING) return new Literal(token, token.text(), Type.STRING);
+        if (token.kind() == Token.Kind.STRING) return token.text().contains("$" + "{")
+                ? interpolated(token) : new Literal(token, unescapeInterpolation(token.text()), Type.STRING);
         if (token.kind() == Token.Kind.NAME) {
+            if (token.text().equals("if")) {
+                Expr condition = at("(") ? condition() : expression();
+                Expr yes = expressionBlock();
+                newlines(); expect("else");
+                Expr no = expressionBlock();
+                return new ConditionalExpr(token, condition, yes, no);
+            }
+            if (token.text().equals("match")) return matchExpression(token);
             if (token.text().equals("null")) return new Literal(token, null, Type.ANY);
             if (token.text().equals("true") || token.text().equals("false"))
                 return new Literal(token, Boolean.parseBoolean(token.text()), Type.BOOL);
@@ -220,6 +230,7 @@ final class Parser {
             expect(")"); parentheses--; return new Call(token, List.copyOf(args));
         }
         if (token.kind() == Token.Kind.SYMBOL && token.text().equals("(")) {
+            if (lambdaAhead()) return lambda(token);
             parentheses++; newlines(); Expr value = expression(); newlines(); expect(")"); parentheses--; return value;
         }
         if (token.kind() == Token.Kind.SYMBOL && token.text().equals("[")) {
@@ -234,6 +245,89 @@ final class Parser {
             expect("]"); parentheses--; return new ListExpr(token, List.copyOf(elements));
         }
         throw error(token, "Expected an expression.");
+    }
+    private Expr expressionBlock() {
+        newlines(); expect("{"); separators();
+        Expr value = expression(); endStatement(); separators(); expect("}");
+        return value;
+    }
+    private Expr matchExpression(Token token) {
+        Expr target = condition(); newlines(); expect("{"); separators();
+        List<MatchCase> cases = new ArrayList<>();
+        while (!at("}") && peek().kind() != Token.Kind.EOF) {
+            boolean fallback;
+            Expr label = null;
+            if (match("case")) { fallback = false; label = expression(); }
+            else if (match("else")) fallback = true;
+            else throw error(peek(), "Expected 'case' or 'else' in match expression.");
+            expect("=>"); Expr value = expression();
+            cases.add(new MatchCase(label, value, fallback)); separators();
+        }
+        expect("}");
+        if (cases.isEmpty()) throw error(token, "A match expression needs at least one case.");
+        if (cases.stream().noneMatch(MatchCase::fallback)) throw error(token, "Add an 'else =>' branch to cover unmatched values.");
+        return new MatchExpr(token, target, List.copyOf(cases));
+    }
+    private Expr interpolated(Token token) {
+        String text = token.text();
+        List<String> fragments = new ArrayList<>();
+        List<Expr> expressions = new ArrayList<>();
+        int cursor = 0;
+        while (true) {
+            int start = text.indexOf("$" + "{", cursor);
+            if (start < 0) { fragments.add(unescapeInterpolation(text.substring(cursor))); break; }
+            fragments.add(unescapeInterpolation(text.substring(cursor, start)));
+            int end = interpolationEnd(text, start + 2, token);
+            String source = text.substring(start + 2, end).trim();
+            if (source.isEmpty()) throw error(token, "Interpolation braces must contain an expression.");
+            expressions.add(new Parser(new Lexer(source, token.file()).scan()).standaloneExpression());
+            cursor = end + 1;
+        }
+        return new Interpolated(token, List.copyOf(fragments), List.copyOf(expressions));
+    }
+    private String unescapeInterpolation(String text) { return text.replace('\uE000', '$'); }
+    private int interpolationEnd(String text, int start, Token token) {
+        int depth = 1; boolean quoted = false, escaped = false;
+        for (int i = start; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+            } else if (c == '"') quoted = true;
+            else if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return i;
+        }
+        throw error(token, "Unclosed string interpolation; add a closing brace.");
+    }
+    private Expr standaloneExpression() {
+        separators(); Expr value = expression(); separators();
+        if (peek().kind() != Token.Kind.EOF) throw error(peek(), "Unexpected text in interpolation.");
+        return value;
+    }
+    private boolean lambdaAhead() {
+        int nesting = 0;
+        for (int i = pos; i < tokens.size(); i++) {
+            Token candidate = tokens.get(i);
+            if (candidate.text().equals("(")) nesting++;
+            else if (candidate.text().equals(")")) {
+                if (nesting == 0) return i + 1 < tokens.size() && tokens.get(i + 1).text().equals("=>");
+                nesting--;
+            }
+        }
+        return false;
+    }
+    private Expr lambda(Token start) {
+        newlines();
+        List<Parameter> parameters = new ArrayList<>();
+        if (!at(")")) do {
+            newlines(); Token param = name(); expect(":");
+            TypeSpec type = type();
+            parameters.add(new Parameter(param, type.type(), type.structName()));
+            newlines();
+        } while (match(","));
+        expect(")"); expect("=>");
+        return new LambdaExpr(start, List.copyOf(parameters), expression());
     }
     private Token name() {
         Token token = advance();

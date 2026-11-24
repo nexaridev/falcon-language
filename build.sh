@@ -8,6 +8,14 @@ rm -rf "$classes"
 mkdir -p "$classes/stdlib"
 mapfile -t sources < <(find "$root/src/main/java/falcon" -name '*.java' -print)
 javac --release 17 -encoding UTF-8 -d "$classes" "${sources[@]}"
+sqlite_version=3.54.1.0
+sqlite_jar="$root/build/deps/sqlite-jdbc-$sqlite_version.jar"
+mkdir -p "$root/build/deps"
+if [ ! -f "$sqlite_jar" ]; then
+  curl -fL "https://repo.maven.apache.org/maven2/org/xerial/sqlite-jdbc/$sqlite_version/sqlite-jdbc-$sqlite_version.jar" -o "$sqlite_jar"
+fi
+(cd "$classes" && jar --extract --file "$sqlite_jar")
 cp "$root"/stdlib/*.fc "$classes/stdlib/"
-jar --create --file "$root/build/falcon.jar" --main-class falcon.Main -C "$classes" .
+printf 'Main-Class: falcon.Main\nMulti-Release: true\nEnable-Native-Access: ALL-UNNAMED\n\n' > "$classes/falcon-manifest.mf"
+jar --create --file "$root/build/falcon.jar" --manifest "$classes/falcon-manifest.mf" -C "$classes" .
 echo "Built $root/build/falcon.jar"

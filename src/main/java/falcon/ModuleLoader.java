@@ -236,6 +236,7 @@ final class ModuleLoader {
         if (stmt instanceof Give g) return new Give(g.token(), g.value() == null ? null : link(g.value(), module));
         if (stmt instanceof TryCatch t) return new TryCatch(t.token(), (Block) link(t.body(), module),
                 t.errorName(), (Block) link(t.handler(), module));
+        if (stmt instanceof Defer d) return new Defer(d.token(), (Block) link(d.body(), module));
         throw new IllegalStateException("Unknown statement");
     }
 
@@ -243,6 +244,18 @@ final class ModuleLoader {
         if (expr instanceof ListExpr list) return new ListExpr(list.token(), list.elements().stream().map(e -> link(e, module)).toList());
         if (expr instanceof Index index) return new Index(index.token(), link(index.target(), module), link(index.index(), module));
         if (expr instanceof Field field) return new Field(field.token(), link(field.target(), module), field.name());
+        if (expr instanceof ConditionalExpr conditional)
+            return new ConditionalExpr(conditional.token(), link(conditional.condition(), module),
+                    link(conditional.yes(), module), link(conditional.no(), module));
+        if (expr instanceof Interpolated interpolated)
+            return new Interpolated(interpolated.token(), interpolated.fragments(),
+                    interpolated.expressions().stream().map(e -> link(e, module)).toList());
+        if (expr instanceof MatchExpr match)
+            return new MatchExpr(match.token(), link(match.target(), module), match.cases().stream()
+                    .map(branch -> new MatchCase(branch.label() == null ? null : link(branch.label(), module),
+                            link(branch.value(), module), branch.fallback())).toList());
+        if (expr instanceof LambdaExpr lambda)
+            return new LambdaExpr(lambda.token(), lambda.parameters(), link(lambda.body(), module));
         if (expr instanceof Call call) {
             String name = call.token().text();
             String target = name;

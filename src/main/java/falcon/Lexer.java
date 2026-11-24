@@ -66,6 +66,11 @@ final class Lexer {
                     if (ch == '\n' || ch == '\r') throw error(row, col, "Strings cannot cross lines; use \\n.");
                     if (ch == '\\') {
                         if (end()) throw error(row, col, "Unclosed string.");
+                        if (peek() == '$' && peekNext() == '{') {
+                            take();
+                            value.append('\uE000');
+                            continue;
+                        }
                         ch = switch (take()) {
                             case 'n' -> '\n'; case 'r' -> '\r'; case 't' -> '\t';
                             case '"' -> '"'; case '\\' -> '\\';
@@ -80,7 +85,7 @@ final class Lexer {
             } else {
                 String symbol = String.valueOf(c);
                 String pair = symbol + peek();
-                if (List.of("==", "!=", "<=", ">=", "&&", "||", "->", "..").contains(pair)) {
+                if (List.of("==", "!=", "<=", ">=", "&&", "||", "->", "..", "=>").contains(pair)) {
                     take(); symbol = pair;
                 } else if ("(){}[]:;,+-*/%!=<>.".indexOf(c) < 0) {
                     throw error(row, col, "Unexpected character '" + c + "'.");
