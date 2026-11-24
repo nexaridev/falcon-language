@@ -101,6 +101,13 @@ public final class FalconTest {
             bytes.reset();
             expect(Main.cli(new String[]{"run", file.toString()}, stream, stream) == 1 && bytes.toString(StandardCharsets.UTF_8).contains(":1:19: error:"), "CLI source error");
         } finally { Files.deleteIfExists(file); }
+        ByteArrayOutputStream versionBytes = new ByteArrayOutputStream();
+        PrintStream versionStream = new PrintStream(versionBytes, true, StandardCharsets.UTF_8);
+        expect(Main.cli(new String[]{"--version"}, versionStream, versionStream) == 0
+                && versionBytes.toString(StandardCharsets.UTF_8).trim().equals("Falcon 0.12.0"), "CLI version");
+        versionBytes.reset();
+        expect(Main.cli(new String[]{"--help"}, versionStream, versionStream) == 0
+                && versionBytes.toString(StandardCharsets.UTF_8).lines().findFirst().orElse("").contains("Falcon 0.12.0"), "help version");
         output("if chain", "func main() { each (n in 0..4) { if (n == 0) { say(0) } elseif (n == 1) { say(1) } else if (n == 2) { say(2) } else { say(3) } } }", "0\n1\n2\n3\n");
         output("if returns", "func f(n: int) -> int { if (n == 0) { give 10 }\nelseif (n == 1) { give 20 }\nelse { give 30 } } func main() { say(f(1)) }", "20\n");
         failure("orphan elseif", "func main() { elseif (true) {} }", "must follow");
@@ -108,6 +115,7 @@ public final class FalconTest {
         failure("if condition type", "func main() { if (1) {} }", "bool");
         passed += GuiTest.run();
         passed += ModuleTest.run();
+        passed += JvmCacheTest.run();
         passed += EditorTest.run();
         passed += StdlibTest.run();
         passed += OptionalLibraryTest.run();
@@ -125,6 +133,7 @@ public final class FalconTest {
     private static String run(String source) {
         Ast.Program program = new Parser(new Lexer(source).scan()).parse();
         Checker checker = new Checker(); checker.check(program);
+        if (!checker.errors.isEmpty()) throw checker.errors.get(0);
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         new Interpreter(checker, new PrintStream(bytes, true, StandardCharsets.UTF_8), 10_000).run();
         return bytes.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");

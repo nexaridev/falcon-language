@@ -135,7 +135,7 @@ public final class Main {
                 PreparedProgram prepared = compilationCache.get(key);
                 if (prepared == null) {
                     checker = new Checker(); checker.check(program, !library);
-                    compilationCache.put(key, new PreparedProgram(program, checker));
+                    if (checker.errors.isEmpty()) compilationCache.put(key, new PreparedProgram(program, checker));
                 } else {
                     program = prepared.program();
                     checker = prepared.checker();
