@@ -14,6 +14,13 @@ import static falcon.Ast.*;
 
 /** Loads local files once and links calls without merging their public namespaces. */
 final class ModuleLoader {
+    private static final int PARSE_CACHE_LIMIT = 128;
+    private static final Map<String, Program> PARSE_CACHE = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<>(64, 0.75f, true) {
+                @Override protected boolean removeEldestEntry(Map.Entry<String, Program> eldest) {
+                    return size() > PARSE_CACHE_LIMIT;
+                }
+            });
     private record Module(Program program, String namespace, Map<String, Module> imports) {}
     private final Map<Path, Module> modules = new LinkedHashMap<>();
     private final Map<String, Module> standardModules = new LinkedHashMap<>();
@@ -22,6 +29,17 @@ final class ModuleLoader {
     private final Map<String, String> sources = new LinkedHashMap<>();
     private Path overlayPath;
     private String overlaySource;
+
+    Map<String, String> sources() { return Map.copyOf(sources); }
+
+    private Program parse(String source, String file) {
+        String key = file + '\0' + source;
+        Program cached = PARSE_CACHE.get(key);
+        if (cached != null) return cached;
+        Program parsed = new Parser(new Lexer(source, file).scan()).parse();
+        PARSE_CACHE.put(key, parsed);
+        return parsed;
+    }
 
     Program load(Path entry, String source) throws IOException {
         overlayPath = entry.toRealPath();
@@ -64,7 +82,7 @@ final class ModuleLoader {
             throw new FalconError(importSite, "Cannot read module '" + path + "': " + e.getMessage());
         }
         sources.put(path.toString(), source);
-        Program program = new Parser(new Lexer(source, path.toString()).scan()).parse();
+        Program program = parse(source, path.toString());
         Module module = new Module(program, entry ? "" : "@" + modules.size() + "::", new LinkedHashMap<>());
         modules.put(path, module); active.add(path);
         Set<String> localNames = new HashSet<>();
@@ -185,7 +203,7 @@ final class ModuleLoader {
             throw new FalconError(site, "Cannot load Falcon standard library: " + e.getMessage());
         }
         sources.put(file, source);
-        Program program = new Parser(new Lexer(source, file).scan()).parse();
+        Program program = parse(source, file);
         var imports = new LinkedHashMap<String, Module>();
         Set<String> names = new HashSet<>();
         for (Function function : program.functions()) names.add(function.name().text());

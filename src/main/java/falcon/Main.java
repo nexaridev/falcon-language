@@ -17,17 +17,21 @@ public final class Main {
     public static void main(String[] args) { System.exit(cli(args, System.out, System.err)); }
 
     static int cli(String[] args, PrintStream out, PrintStream err) {
-        return cli(args, System.in, out, err);
+        return cli(args, System.in, out, err, null);
     }
 
     static int cli(String[] args, InputStream in, PrintStream out, PrintStream err) {
+        return cli(args, in, out, err, null);
+    }
+
+    private static int cli(String[] args, InputStream in, PrintStream out, PrintStream err, CompilationCache compilationCache) {
         if (args.length == 0 || args[0].equals("--help") || args[0].equals("help")) {
             out.println("Falcon 0.12.0 — Java reference interpreter\n"
                     + "Usage: falcon <run|check|tokens> <file.fc> [--max-steps N]\n"
                     + "       falcon install <github-owner/repository>\n"
                     + "       falcon setup\n"
                     + "       falcon repl\n"
-                    + "       falcon jvm\n"
+                    + "       falcon jvm  (persistent JVM with an in-memory source cache)\n"
                     + "       falcon build <file.fc> [--output <directory>] [--args <defaults>]\n"
                     + "       falcon cmd <command>\n"
                     + "       falcon --version\n"
@@ -125,7 +129,20 @@ public final class Main {
                 return 0;
             }
             Ast.Program program = loader.load(Path.of(args[1]), source);
-            Checker checker = new Checker(); checker.check(program, !library);
+            Checker checker;
+            if (compilationCache != null) {
+                String key = compilationKey(loader.sources(), !library);
+                PreparedProgram prepared = compilationCache.get(key);
+                if (prepared == null) {
+                    checker = new Checker(); checker.check(program, !library);
+                    compilationCache.put(key, new PreparedProgram(program, checker));
+                } else {
+                    program = prepared.program();
+                    checker = prepared.checker();
+                }
+            } else {
+                checker = new Checker(); checker.check(program, !library);
+            }
             if (!checker.errors.isEmpty()) {
                 for (FalconError diagnostic : checker.errors) err.println(loader.diagnostic(diagnostic, args[1], source));
                 return 1;
@@ -167,6 +184,32 @@ public final class Main {
         String minutesAndSeconds = (milliseconds / 60_000) + "m, "
                 + String.format(java.util.Locale.ROOT, "%02d.%03ds", (milliseconds / 1000) % 60, milliseconds % 1000);
         return precise + " (" + minutesAndSeconds + ")";
+    }
+
+    private record PreparedProgram(Ast.Program program, Checker checker) {}
+
+    private static final class CompilationCache {
+        private static final int LIMIT = 64;
+        private final java.util.LinkedHashMap<String, PreparedProgram> entries = new java.util.LinkedHashMap<>(16, 0.75f, true);
+        synchronized PreparedProgram get(String key) { return entries.get(key); }
+        synchronized void put(String key, PreparedProgram program) {
+            entries.put(key, program);
+            while (entries.size() > LIMIT) entries.remove(entries.keySet().iterator().next());
+        }
+    }
+
+    private static String compilationKey(Map<String, String> sources, boolean requireMain) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            digest.update((byte) (requireMain ? 1 : 0));
+            for (var entry : new java.util.TreeMap<>(sources).entrySet()) {
+                digest.update(entry.getKey().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0xff);
+            }
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }
     }
 
     private static int setup(Path root, PrintStream out, PrintStream err) {
@@ -252,7 +295,8 @@ public final class Main {
     private static int jvm(InputStream in, PrintStream out, PrintStream err) {
         BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         java.io.Console console = in == System.in ? System.console() : null;
-        out.println("Falcon JVM console. Type CLI commands; use :quit to exit.");
+        CompilationCache compilationCache = new CompilationCache();
+        out.println("Falcon JVM console. Parsed and checked programs stay cached while this session is open; use :quit to exit.");
         while (true) {
             try {
                 String line;
@@ -271,7 +315,7 @@ public final class Main {
                 if (first.length() >= 2 && "build".startsWith(first)) words.set(0, "build");
                 if (words.get(0).equals("build") && words.size() > 1 && words.get(1).endsWith("."))
                     words.set(1, words.get(1) + "fc");
-                int status = cli(words.toArray(String[]::new), in, out, err);
+                int status = cli(words.toArray(String[]::new), in, out, err, compilationCache);
                 if (status != 0) out.println("Falcon command finished with code " + status + ".");
             } catch (IOException error) {
                 err.println("Couldn't read console input: " + error.getMessage()); return 1;

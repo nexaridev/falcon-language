@@ -94,9 +94,13 @@ and a copy of the project sources. On Windows, its launcher is inside the
 generated program folder as program.exe; move the entire folder when sharing it.
 A JDK with jpackage is required. --args supplies default program arguments, and
 arguments passed when launching the executable are appended. falcon jvm keeps
-one JVM alive between CLI commands; >>> falcon bu ui. is accepted as
-falcon build ui.fc. Falcon source is checked and interpreted by the JVM, not
-translated to Java source before each run.
+one JVM alive between CLI commands, caches parsed source and checked programs,
+and invalidates those cached programs when the entry file or an imported source
+changes. >>> falcon bu ui. is accepted as falcon build ui.fc. Falcon source is
+still interpreted by the JVM; it is not translated to Java bytecode. The cache
+cuts repeated parsing and type-checking, but does not guarantee that Falcon will
+outperform Python or Lua. That requires a compiled execution backend and careful
+benchmarks against equivalent programs.
 
 SQLite is available through the sql standard module. sql.open returns a
 connection handle; prepared queries use ? placeholders and a list of values:
