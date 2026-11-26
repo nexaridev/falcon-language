@@ -1,0 +1,8 @@
+Falcon Language
+Copyright 2026 NexariDev
+
+Falcon is distributed under the Apache License, Version 2.0. See LICENSE.
+
+This distribution includes SQLite JDBC (org.xerial:sqlite-jdbc), which is
+distributed under the Apache License, Version 2.0. Third-party license and
+notice files are included in the packaged JAR where supplied by dependencies.

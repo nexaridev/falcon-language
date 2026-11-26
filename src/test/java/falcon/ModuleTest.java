@@ -32,7 +32,7 @@ final class ModuleTest {
         scenario("missing module", "use missing\nfunc main() {}", Map.of(), 1, "main.fc:1:1: error: Cannot load module");
         scenario("unknown module", "func main() { other.value() }", Map.of(), 1, "Unknown module 'other'");
         scenario("unknown member", "use math\nfunc main() { math.missing() }",
-                Map.of("math.fc", "func value() {}"), 1, "has no function 'missing'");
+                Map.of("math.fc", "func value() {}"), 1, "has no function or struct 'missing'");
         scenario("no implicit function imports", "use math\nfunc main() { value() }",
                 Map.of("math.fc", "func value() {}"), 1, "Unknown function 'value'");
         scenario("no caller scope leak", "use math\nfunc helper() {} func main() { math.value() }",
@@ -66,7 +66,7 @@ final class ModuleTest {
         scenario("quoted path needs alias", "use \"math.fc\"\nfunc main() {}", Map.of(), 1, "Expected 'as'");
         scenario("extension required", "use \"math.txt\" as math\nfunc main() {}", Map.of(), 1, "relative path to a .fc module");
         scenario("module not a value", "use math\nfunc main() { say(math.value) }",
-                Map.of("math.fc", "func value() {}"), 1, "Module members must be called");
+                Map.of("math.fc", "func value() {}"), 1, "Unknown variable 'math'");
         scenario("bundled factorial", "use math\nfunc main() { say(math.factorial(0), math.factorial(5), math.factorial(20)) }",
                 Map.of(), 0, "1 120 2432902008176640000\n");
         scenario("bundled functions", "use math\nfunc main() { say(math.square(5), math.abs(-7), math.sqrt(9), math.pow(2, 3), math.min(2, 3), math.max(2, 3), math.floor(2.9), math.ceil(2.1)) }",
@@ -85,7 +85,7 @@ final class ModuleTest {
         scenario("pow non finite", "use math\nfunc main() { say(math.pow(10, 1000)) }", Map.of(), 1, "no finite real result");
         scenario("native arity", "use math\nfunc main() { say(math.factorial()) }", Map.of(), 1, "Expected 1 arguments");
         scenario("native type", "use math\nfunc main() { say(math.factorial(2.5)) }", Map.of(), 1, "Expected int, got float");
-        scenario("native missing member", "use math\nfunc main() { math.missing() }", Map.of(), 1, "has no function 'missing'");
+        scenario("native missing member", "use math\nfunc main() { math.missing() }", Map.of(), 1, "has no function or struct 'missing'");
         scenario("nested native import", "use helper\nfunc main() { say(helper.value()) }",
                 Map.of("helper.fc", "use math\nfunc value() -> int { give math.factorial(4) }"), 0, "24\n");
         return passed;
@@ -105,7 +105,7 @@ final class ModuleTest {
             var output = new ByteArrayOutputStream();
             var stream = new PrintStream(output, true, StandardCharsets.UTF_8);
             int code = Main.cli(new String[]{"run", main.toString()}, stream, stream);
-            String actual = output.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
+            String actual = TestOutput.withoutDuration(output.toString(StandardCharsets.UTF_8));
             boolean matches = expectedCode == 0 ? actual.equals(expectedOutput) : actual.contains(expectedOutput);
             if (code != expectedCode || !matches)
                 throw new AssertionError(name + " (exit " + code + "): " + actual);

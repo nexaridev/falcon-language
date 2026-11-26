@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class Main {
+    static final String VERSION = "0.12.0";
     private Main() {}
     public static void main(String[] args) { System.exit(cli(args, System.out, System.err)); }
 
@@ -25,14 +26,24 @@ public final class Main {
     }
 
     private static int cli(String[] args, InputStream in, PrintStream out, PrintStream err, CompilationCache compilationCache) {
+        try { return dispatch(args, in, out, err, compilationCache); }
+        finally { UpdateNotifier.afterCommand(out); }
+    }
+
+    private static int dispatch(String[] args, InputStream in, PrintStream out, PrintStream err, CompilationCache compilationCache) {
         if (args.length == 0 || args[0].equals("--help") || args[0].equals("help")) {
-            out.println("Falcon 0.12.0 — Java reference interpreter\n"
+            out.println("Falcon " + VERSION + " — Java reference interpreter\n"
                     + "Usage: falcon <run|check|tokens> <file.fc> [--max-steps N]\n"
                     + "       falcon install <github-owner/repository>\n"
+                    + "       falcon install <owner/repository> [--path <folder>] [--ref <branch-or-tag>] [--name <module>]\n"
+                    + "       falcon install -u  (update Falcon)\n"
+                    + "       falcon --upd-quiet  (silence this update reminder)\n"
                     + "       falcon setup\n"
                     + "       falcon repl\n"
-                    + "       falcon jvm  (persistent JVM with an in-memory source cache)\n"
-                    + "       falcon build <file.fc> [--output <directory>] [--args <defaults>]\n"
+                    + "       falcon jvm  (persistent JVM with an in-memory JIT cache)\n"
+                    + "       falcon build <file.fc> [--name=<name>] [--out=<directory>] [build flags] [--args <defaults>]\n"
+                    + "         --icon=<file.ico> --no-console --dont-close --req-admin --one-file\n"
+                    + "         --outside --clean --dry-run --verbose --force --bruteforce\n"
                     + "       falcon cmd <command>\n"
                     + "       falcon --version\n"
                     + "       falcon check <file.fc> [--stdin] [--library]\n"
@@ -42,7 +53,8 @@ public final class Main {
                     + "tokens Print lexer tokens");
             return 0;
         }
-        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon 0.12.0"); return 0; }
+        if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon " + VERSION); return 0; }
+        if (args.length == 1 && args[0].equals("--upd-quiet")) return UpdateNotifier.quiet(out, err);
         if (args[0].equals("jvm")) {
             if (args.length != 1) { err.println("Usage: falcon jvm"); return 2; }
             return jvm(in, out, err);
@@ -52,16 +64,45 @@ public final class Main {
             return repl(in, out, err);
         }
         if (args[0].equals("build") || args[0].equals("bu")) {
-            if (args.length < 2) { err.println("Usage: falcon build <file.fc> [--output <directory>] [--args <defaults>]"); return 2; }
+            if (args.length < 2) { err.println("Usage: falcon build <file.fc> [build flags] [--args <defaults>]"); return 2; }
             Path source = Path.of(args[1].endsWith(".") ? args[1] + "fc" : args[1]);
-            Path destination = null;
             String defaults = "";
+            String name = null;
+            Path icon = null, output = null;
+            boolean outside = false, noConsole = false, requireAdmin = false, oneFile = false, dontClose = false;
+            boolean force = false, bruteForce = false, clean = false, dryRun = false, verbose = false;
             for (int i = 2; i < args.length; i++) {
-                if (args[i].equals("--output") && i + 1 < args.length) destination = Path.of(args[++i]);
-                else if (args[i].equals("--args") && i + 1 < args.length) defaults = args[++i];
-                else { err.println("Build accepts --output <directory> and --args <defaults>."); return 2; }
+                if (args[i].equals("--args") && i + 1 < args.length) defaults = args[++i];
+                else if (args[i].startsWith("--name=")) name = args[i].substring(7);
+                else if (args[i].equals("--name") && i + 1 < args.length) name = args[++i];
+                else if (args[i].startsWith("--out=")) output = Path.of(args[i].substring(6));
+                else if (args[i].equals("--out") && i + 1 < args.length) output = Path.of(args[++i]);
+                else if (args[i].startsWith("--output=")) output = Path.of(args[i].substring(9));
+                else if (args[i].equals("--output") && i + 1 < args.length) output = Path.of(args[++i]);
+                else if (args[i].equals("--outside")) outside = true;
+                else if (args[i].equals("--icon") && i + 1 < args.length) icon = Path.of(args[++i]);
+                else if (args[i].startsWith("--icon=")) icon = Path.of(args[i].substring("--icon=".length()));
+                else if (args[i].equals("--no-console")) noConsole = true;
+                else if (args[i].equals("--req-admin")) requireAdmin = true;
+                else if (args[i].equals("--one-file")) oneFile = true;
+                else if (args[i].equals("--dont-close")) dontClose = true;
+                else if (args[i].equals("--force")) force = true;
+                else if (args[i].equals("--bruteforce")) bruteForce = true;
+                else if (args[i].equals("--clean")) clean = true;
+                else if (args[i].equals("--dry-run")) dryRun = true;
+                else if (args[i].equals("--verbose")) verbose = true;
+                else { err.println("Unknown build flag: " + args[i]); return 2; }
             }
-            try { return BuildCommand.build(source, destination, defaults, out, err); }
+            if (noConsole && dontClose) { err.println("--dont-close needs a console and cannot be used with --no-console."); return 2; }
+            if (requireAdmin && !System.getProperty("os.name").toLowerCase().contains("win")) { err.println("--req-admin only works on Windows."); return 2; }
+            if (oneFile && !System.getProperty("os.name").toLowerCase().contains("win")) { err.println("--one-file currently only works on Windows."); return 2; }
+            if (icon != null && !Files.isRegularFile(icon)) { err.println("Icon file not found: " + icon); return 2; }
+            if (icon != null && System.getProperty("os.name").toLowerCase().contains("win")
+                    && !icon.getFileName().toString().toLowerCase().endsWith(".ico")) {
+                err.println("Windows icons must be .ico files. Choose a .ico file for --icon."); return 2;
+            }
+            try { return BuildCommand.build(source, defaults,
+                    new BuildCommand.Options(name, icon, output, outside, noConsole, requireAdmin, oneFile, dontClose, force, bruteForce, clean, dryRun, verbose), out, err); }
             catch (Exception e) { err.println("Falcon couldn't build that executable: " + e.getMessage()); return 1; }
         }
         if (args[0].equals("setup")) {
@@ -79,13 +120,18 @@ public final class Main {
             catch (InterruptedException e) { Thread.currentThread().interrupt(); err.println("Command interrupted."); return 1; }
         }
         if (args[0].equals("install")) {
-            if (args.length != 2) { err.println("Usage: falcon install owner/repository"); return 2; }
+            if (args.length == 2 && args[1].equals("-u")) return updateInstalledFalcon(out, err);
+            if (args.length < 2) { err.println("Usage: falcon install owner/repository [--path folder] [--ref branch-or-tag] [--name module]"); return 2; }
             Path script = Path.of("modules", "install.ps1").toAbsolutePath().normalize();
             if (!Files.isRegularFile(script)) { err.println("modules/install.ps1 is missing; restore it from the Falcon workspace."); return 2; }
             try {
-                ProcessBuilder builder = System.getProperty("os.name").toLowerCase().contains("win")
-                        ? new ProcessBuilder("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.toString(), args[1])
-                        : new ProcessBuilder("bash", script.resolveSibling("install.sh").toString(), args[1]);
+                boolean windows = System.getProperty("os.name").toLowerCase().contains("win");
+                List<String> command = windows
+                        ? new java.util.ArrayList<>(List.of("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.toString()))
+                        : new java.util.ArrayList<>(List.of("bash", script.resolveSibling("install.sh").toString()));
+                for (int i = 1; i < args.length; i++)
+                    command.add(windows && args[i].startsWith("--") ? "-" + args[i].substring(2) : args[i]);
+                ProcessBuilder builder = new ProcessBuilder(command);
                 builder.inheritIO(); return builder.start().waitFor();
             } catch (IOException e) { err.println("Cannot start module installer: " + e.getMessage()); return 2; }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); err.println("Module installation interrupted."); return 1; }
@@ -120,6 +166,7 @@ public final class Main {
                 : Files.readString(Path.of(args[1]), StandardCharsets.UTF_8); }
         catch (IOException | InvalidPathException e) { err.println("Cannot read '" + args[1] + "': " + e.getMessage()); return 2; }
         ModuleLoader loader = new ModuleLoader();
+        PreparedProgram preparedForExecution = null;
         try {
             if (args[0].equals("tokens")) {
                 List<Token> tokens = new Lexer(source).scan();
@@ -128,6 +175,7 @@ public final class Main {
                             token.text().replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"));
                 return 0;
             }
+
             Ast.Program program = loader.load(Path.of(args[1]), source);
             Checker checker;
             if (compilationCache != null) {
@@ -135,11 +183,15 @@ public final class Main {
                 PreparedProgram prepared = compilationCache.get(key);
                 if (prepared == null) {
                     checker = new Checker(); checker.check(program, !library);
-                    if (checker.errors.isEmpty()) compilationCache.put(key, new PreparedProgram(program, checker));
+                    if (checker.errors.isEmpty()) {
+                        prepared = new PreparedProgram(program, checker);
+                        compilationCache.put(key, prepared);
+                    }
                 } else {
                     program = prepared.program();
                     checker = prepared.checker();
                 }
+                preparedForExecution = prepared;
             } else {
                 checker = new Checker(); checker.check(program, !library);
             }
@@ -151,12 +203,42 @@ public final class Main {
             else {
                 long executionLimit = limit;
                 List<String> programArguments = arguments;
-                runTimed(() -> new Interpreter(checker, out, executionLimit, in, programArguments).run(), out);
+                FastJitCompiler.CompiledProgram compiled = preparedForExecution == null ? null : preparedForExecution.compiled();
+                if (compiled != null) runTimed(() -> compiled.run(out, executionLimit), out);
+                else runTimed(() -> new Interpreter(checker, out, executionLimit, in, programArguments).run(), out);
             }
             return 0;
         } catch (FalconError e) { err.println(loader.diagnostic(e, args[1], source)); return 1; }
         catch (IOException e) { err.println("Cannot read '" + args[1] + "': " + e.getMessage()); return 2; }
         catch (StackOverflowError e) { err.println("Error: program nesting exceeds the implementation limit."); return 1; }
+    }
+
+    private static int updateInstalledFalcon(PrintStream out, PrintStream err) {
+        if (!System.getProperty("os.name").toLowerCase().contains("win")) {
+            err.println("Automatic self-update is supported by FalconSetup on Windows. Download the latest release for other systems.");
+            return 2;
+        }
+        try {
+            Path installRoot = Path.of(System.getenv().getOrDefault("LOCALAPPDATA", ""), "Falcon").toAbsolutePath().normalize();
+            Path installedJar = installRoot.resolve("falcon.jar");
+            Path runningJar = Path.of(Main.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toAbsolutePath().normalize();
+            if (!Files.isRegularFile(installedJar) || !runningJar.equals(installedJar)) {
+                err.println("This Falcon wasn't installed by FalconSetup. Run FalconSetup.exe from the latest GitHub release to update it.");
+                return 2;
+            }
+            Path setup = installRoot.resolve("FalconSetup.exe");
+            if (!Files.isRegularFile(setup)) {
+                err.println("FalconSetup.exe is missing. Download it from https://github.com/nexaridev/falcon-language/releases and run it to update Falcon.");
+                return 2;
+            }
+            new ProcessBuilder(setup.toString(), "--update", "--wait-pid", Long.toString(ProcessHandle.current().pid()))
+                    .inheritIO().start();
+            out.println("Falcon updater started. It will replace the JAR after this command exits.");
+            return 0;
+        } catch (Exception e) {
+            err.println("Could not start the Falcon updater: " + e.getMessage());
+            return 1;
+        }
     }
 
     private static void runTimed(Runnable program, PrintStream out) {
@@ -186,7 +268,22 @@ public final class Main {
         return precise + " (" + minutesAndSeconds + ")";
     }
 
-    private record PreparedProgram(Ast.Program program, Checker checker) {}
+    private static final class PreparedProgram {
+        private final Ast.Program program;
+        private final Checker checker;
+        private FastJitCompiler.CompiledProgram compiled;
+        private boolean compilationAttempted;
+        PreparedProgram(Ast.Program program, Checker checker) { this.program = program; this.checker = checker; }
+        Ast.Program program() { return program; }
+        Checker checker() { return checker; }
+        synchronized FastJitCompiler.CompiledProgram compiled() {
+            if (!compilationAttempted) {
+                compilationAttempted = true;
+                compiled = FastJitCompiler.compile(program, checker);
+            }
+            return compiled;
+        }
+    }
 
     private static final class CompilationCache {
         private static final int LIMIT = 64;
@@ -296,7 +393,7 @@ public final class Main {
         BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         java.io.Console console = in == System.in ? System.console() : null;
         CompilationCache compilationCache = new CompilationCache();
-        out.println("Falcon JVM console. Parsed and checked programs stay cached while this session is open; use :quit to exit.");
+        out.println("Falcon JVM console. Parsed and checked programs stay cached; supported numeric code is JIT-compiled in memory. Use :quit to exit.");
         while (true) {
             try {
                 String line;

@@ -9,4 +9,5 @@ trap 'rm -rf "$tmp"' EXIT
 git clone --depth 1 --branch "$branch" "https://github.com/$repo.git" "$tmp/falcon"
 cp -R "$tmp/falcon"/. .
 bash ./build.sh
+chmod +x ./bin/falcon ./bin/fc
 echo 'Falcon installed. Run ./bin/falcon --help'

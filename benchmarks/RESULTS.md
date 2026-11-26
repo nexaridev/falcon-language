@@ -13,3 +13,21 @@ The initial Falcon release used insertion sort and took about 1,348 ms. After re
 The arithmetic loop applies the same formula to the same 100,000 indices: `total += (i * 17 + 13) % 1009`. The checksum was 50,396,093 in every language. Falcon's ordinary interpreted loop took about 180× Java, 5.1× Python, and 450× Rust in these runs. `math.sumModuloRange(0, 100000, 17, 13, 1009)` now computes that exact sum with a logarithmic floor-sum algorithm in about 0.98 ms, roughly 65× faster than Falcon's loop. This special-purpose aggregation is not a faster general-purpose loop. `collections.sumNumbers` also sums lists in the Java runtime; the 1,500-number checksum reduction measured about 1.8 ms including interpreter-to-native dispatch. Java and Rust are compiled; Falcon is currently a tree-walking interpreter. These are single-PC measurements, not universal language rankings.
 
 Reproduce with the source files in this folder. Falcon sorting needs `--max-steps 100000000` because the current algorithm exceeds the default execution budget at this input size.
+
+## Falcon JVM JIT, 24 November 2026
+
+On the same i5-1135G7 / OpenJDK 25 / CPython 3.12.4 / Rust 1.99.1 machine,
+`falcon jvm` now compiles eligible numeric `main()` programs to JVM bytecode in
+memory. For the 100,000-iteration modular-sum loop, all implementations produced
+the checksum `50,396,093`. Falcon's median was **0.934 ms** across the last four
+of seven executions in the same JVM session (the first three were discarded
+while HotSpot warmed the generated method). The corresponding medians were
+Python **13.406 ms**, warmed Java **0.359 ms**, and optimized Rust **0.151 ms**.
+That makes this Falcon run about 2.6× slower than Java and 14× faster than
+Python for this workload. It does not predict performance for other programs.
+
+The first command for an eligible source has additional Java source compilation
+cost: in one separate session, the first run took 618.8 ms end-to-end, followed
+by 10.8, 8.3, 5.3, and 4.5 ms for repeated commands. `Ended in` measures program
+execution, not this compilation/setup time. The current JIT covers a subset of
+typed `main()` programs; unsupported programs continue through the interpreter.

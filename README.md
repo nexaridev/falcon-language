@@ -1,5 +1,9 @@
 # Falcon (.fc)
 
+[![CI](https://github.com/nexaridev/falcon-language/actions/workflows/ci.yml/badge.svg)](https://github.com/nexaridev/falcon-language/actions/workflows/ci.yml)
+[![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/nexaridev/falcon-language)](https://github.com/nexaridev/falcon-language/releases)
+
 Falcon is a small, statically checked programming language implemented in Java.
 Version 0.12 is a working reference interpreter with a separate lexer, parser,
 abstract syntax tree, semantic checker, and execution backend.
@@ -37,7 +41,14 @@ The scripts discover a JDK through `JAVA_HOME`, `javac` on `PATH`, or your
 falcon build examples/hello.fc --args "first argument"
 ```
 
-Quick install from GitHub: `.\install.ps1`. On Linux/macOS, run `bash install.sh`. Install a public Falcon module in the current project with `falcon install owner/repository`; modules need `module.json` with a relative `.fc` `main` path, then import with `use "module-name" as alias`. VS Code checks files as you type and shows compiler errors with red underlines.
+Quick install from GitHub: `.\install.ps1`. On Linux/macOS, run `bash install.sh`. Install a public Falcon module in the current project with `falcon install owner/repository`; modules need `module.json` with a relative `.fc` `main` path, then import with `use "module-name" as alias`. Add `--path`, `--ref`, and `--name` to install a module from a repo subfolder at a selected branch or tag. VS Code checks files as you type and shows compiler errors with red underlines.
+
+For a one-file Windows installer, download **FalconSetup.exe** from the latest
+[GitHub release](https://github.com/nexaridev/falcon-language/releases). It
+checks for an existing JDK, installs Temurin JDK 17 into your user profile if
+needed, installs or updates Falcon, and configures `falcon` and `fc` without
+admin rights. It also adds `fc` aliases to PowerShell and interactive Command
+Prompt.
 
 The launcher builds if the JAR is missing. After editing the Java implementation,
 run `.\build.ps1` to rebuild. Editing `.fc` programs does not require a rebuild.
@@ -66,6 +77,7 @@ Then run from any directory:
 
 ```powershell
 falcon --version
+fc --version
 falcon run "C:\path\to\project\main.fc"
 falcon check "C:\path\to\project\main.fc"
 ```
@@ -75,6 +87,28 @@ Relative CLI paths are resolved from your current directory. The installed comma
 continues to use this checkout, so keep it in place. The Windows shim uses
 Windows PowerShell with a process-local execution-policy setting to launch the
 local script; it does not change your persistent execution policy.
+
+When an installed Falcon release is outdated, the CLI recommends
+`falcon install -u` after commands. It checks for releases at most once per day
+and repeats the reminder until updated. The updater waits for the current
+command to finish before replacing the installed JAR. `fc` and `falcon` run the
+same CLI. Run `falcon --upd-quiet` to silence the currently suggested version;
+a different newer version can still be announced later.
+
+## Test the logging module package
+
+`packages/logging` is a small timestamped logging module. Install it from its
+repository subfolder with:
+
+```sh
+falcon install nexaridev/falcon-language --path packages/logging --name logging --ref main
+```
+
+Import it with `use "logging" as log`, then call `log.info("Started")` or
+`log.error("Something failed")`. The `Publish logging module` GitHub Actions
+workflow can publish `io.github.nexaridev:logging:0.1.0` to GitHub Packages.
+`falcon install` fetches Falcon source modules from public GitHub repositories;
+the Maven artifact is for Maven-compatible package clients.
 
 On Linux/macOS with a JDK on `PATH`, build and test with:
 
@@ -87,20 +121,70 @@ javac --release 17 -encoding UTF-8 -cp build/classes -d build/test-classes src/t
 java -cp build/classes:build/test-classes falcon.FalconTest
 ```
 
+## Maven and GitHub Packages
+
+The Maven coordinate is `io.github.nexaridev:falcon-language:0.12.0`. Publishing
+is automated by the GitHub Actions workflow when a GitHub release is published;
+the workflow runs Falcon tests, deploys the Maven artifact with `GITHUB_TOKEN`,
+and attaches the Windows setup executable, a runnable JAR, and the VS Code VSIX.
+
+To consume the Maven package, add the repository and dependency to your POM:
+
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/nexaridev/falcon-language</url>
+  </repository>
+</repositories>
+<dependencies>
+  <dependency>
+    <groupId>io.github.nexaridev</groupId>
+    <artifactId>falcon-language</artifactId>
+    <version>0.12.0</version>
+  </dependency>
+</dependencies>
+```
+
+Maven clients also need a `github` server entry in `~/.m2/settings.xml` with
+their GitHub username and a personal access token with `read:packages`. Keep
+that token in a private settings file or secret store; never commit it.
+
 ## Executable builds and SQLite
 
 falcon build file.fc creates a platform-specific jpackage app image with a JVM
-and a copy of the project sources. On Windows, its launcher is inside the
-generated program folder as program.exe; move the entire folder when sharing it.
-A JDK with jpackage is required. --args supplies default program arguments, and
-arguments passed when launching the executable are appended. falcon jvm keeps
-one JVM alive between CLI commands, caches parsed source and checked programs,
-and invalidates those cached programs when the entry file or an imported source
-changes. >>> falcon bu ui. is accepted as falcon build ui.fc. Falcon source is
-still interpreted by the JVM; it is not translated to Java bytecode. The cache
-cuts repeated parsing and type-checking, but does not guarantee that Falcon will
-outperform Python or Lua. That requires a compiled execution backend and careful
-benchmarks against equivalent programs.
+and a copy of the project sources. On Windows, the launcher is at
+`<out>\bin\<name>.exe`; move the whole `bin` folder when sharing it. By
+default, output goes to `<project>\build\<name>`. `--outside` selects
+`%LOCALAPPDATA%\Falcon\builds\<name>` instead. `--name=<name>` changes the
+executable name, `--out=<directory>` sets the output folder, and
+`--icon=<file.ico>` sets a Windows icon. `--no-console`
+creates a windowed launcher. `--dont-close` waits for Enter after execution and
+cannot be combined with `--no-console`. `--req-admin` embeds a Windows
+`requireAdministrator` manifest using `mt.exe` from the Windows SDK; it only
+works on Windows. `--one-file` creates a self-extracting executable that unpacks
+to a temporary directory at startup, so startup takes longer. `--clean` removes
+this program's old output, `--dry-run` lists included files and their size, and
+`--verbose` reports build-step timings. `--force` skips unreadable non-Falcon
+project files and writes `BUILD-WITH-ERRORS.txt` beside the executable.
+`--bruteforce` attempts packaging despite source/checker errors and records them
+in that same report; packaging-tool failures still stop the build. A JDK with
+`jpackage` is required. `--args` supplies default program arguments separately
+from build flags, and arguments passed when launching the executable are
+appended. falcon jvm keeps
+one JVM alive between CLI commands and caches parsed source and checked
+programs. It invalidates cached programs when the entry file or an imported
+source changes. For supported `main()` programs that use primitive locals,
+arithmetic, `if`/`while`/range `each`, `say`, and `time.monotonic()`, it also
+compiles to JVM bytecode in memory. Other programs use the interpreter. The JIT
+compiler is available when Falcon runs on a JDK; a runtime-only Java install
+falls back to interpretation. Compilation happens once per source per JVM
+session. `>>> falcon bu ui.` is accepted as `falcon build ui.fc`.
+
+The regular `falcon run` command still uses the interpreter. JIT results are
+workload-specific, and startup/compilation time can outweigh the speedup for
+short scripts. Compare equivalent workloads before drawing conclusions against
+Python, Lua, Java, or Rust.
 
 SQLite is available through the sql standard module. sql.open returns a
 connection handle; prepared queries use ? placeholders and a list of values:

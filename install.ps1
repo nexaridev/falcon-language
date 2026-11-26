@@ -26,8 +26,33 @@ try {
   if (($env:Path -split ';' | Where-Object {
     try { [IO.Path]::GetFullPath($_.Trim().Trim('"')).TrimEnd('\') -ieq $bin } catch { $false }
   }).Count -eq 0) { $env:Path += ';' + $bin }
+  $profileBlock = "# >>> Falcon CLI alias >>>`r`nSet-Alias -Name fc -Value falcon -Scope Global -Force`r`n# <<< Falcon CLI alias <<<"
+  $documents = [Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)
+  foreach ($shell in @('PowerShell','WindowsPowerShell')) {
+    $profileFile = Join-Path $documents "$shell\Microsoft.PowerShell_profile.ps1"
+    New-Item -ItemType Directory -Path (Split-Path $profileFile) -Force | Out-Null
+    $profileText = if (Test-Path -LiteralPath $profileFile) { Get-Content -LiteralPath $profileFile -Raw } else { '' }
+    $start = $profileText.IndexOf('# >>> Falcon CLI alias >>>',[StringComparison]::Ordinal)
+    if ($start -ge 0) {
+      $finish = $profileText.IndexOf('# <<< Falcon CLI alias <<<',$start,[StringComparison]::Ordinal)
+      if ($finish -ge 0) { $profileText = $profileText.Remove($start,$finish + '# <<< Falcon CLI alias <<<'.Length - $start).TrimEnd() }
+    }
+    $updatedProfile = if ($profileText.Length -eq 0) { $profileBlock } else { $profileText + "`r`n`r`n" + $profileBlock }
+    [IO.File]::WriteAllText($profileFile,$updatedProfile + "`r`n",[Text.UTF8Encoding]::new($false))
+  }
+  Set-Alias -Name fc -Value falcon -Scope Global -Force
+  $commandKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Command Processor')
+  try {
+    $autoRun = [string]$commandKey.GetValue('AutoRun','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    if ($autoRun -notmatch '(?i)doskey\s+fc=') {
+      $macro = 'doskey fc=call "' + (Join-Path $bin 'fc.cmd') + '" $*'
+      $updatedAutoRun = if ([string]::IsNullOrWhiteSpace($autoRun)) { $macro } else { $autoRun.TrimEnd() + ' & ' + $macro }
+      $kind = try { $commandKey.GetValueKind('AutoRun') } catch { [Microsoft.Win32.RegistryValueKind]::String }
+      $commandKey.SetValue('AutoRun',$updatedAutoRun,$kind)
+    }
+  } finally { $commandKey.Dispose() }
   Write-Host 'Falcon installed and added to your user PATH.'
-  Write-Host 'Try: falcon --version'
+  Write-Host 'Try: falcon --version or fc --version'
 } finally {
   Remove-Item $zip -Force -ErrorAction SilentlyContinue
   Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue

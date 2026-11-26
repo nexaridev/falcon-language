@@ -19,3 +19,6 @@ cp "$root"/stdlib/*.fc "$classes/stdlib/"
 printf 'Main-Class: falcon.Main\nMulti-Release: true\nEnable-Native-Access: ALL-UNNAMED\n\n' > "$classes/falcon-manifest.mf"
 jar --create --file "$root/build/falcon.jar" --manifest "$classes/falcon-manifest.mf" -C "$classes" .
 echo "Built $root/build/falcon.jar"
+javac --release 17 -encoding UTF-8 -cp "$root/build/falcon.jar" -d "$root/build/test-classes" "$root"/src/test/java/falcon/*.java
+java -cp "$root/build/falcon.jar:$root/build/test-classes" falcon.FalconTest
+java -cp "$root/build/falcon.jar:$root/build/test-classes" falcon.BuildOptionsTest

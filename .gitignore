@@ -1,5 +1,17 @@
 /build/
+target/
+/dist/
+/installer/obj/
+/installer/bin/
 /deps/
+.env
+.env.*
+!.env.example
+credentials.json
+secrets.*
+*.pem
+*.p12
+*.pfx
 *.class
 *.vsix
 .idea/

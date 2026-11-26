@@ -135,7 +135,7 @@ final class OptionalLibraryTest {
         Files.writeString(source, "use \"libraries/telebot.fc\" as tb\nuse \"libraries/pillow.fc\" as im\nuse collections as c\nfunc main() { fix bot = tb.TeleBot(\"123:fake\")\ntb.close(bot)\nfix message = c.newMap()\nc.put(message, \"text\", \"/start@mybot hi\")\nsay(tb.command(message))\nfix image = im.new_image(4, 2, \"#123456\")\nsay(im.get_pixel(image, 0, 0), im.width(image))\nim.close(image) }");
         var bytes = new ByteArrayOutputStream(); var out = new PrintStream(bytes, true, StandardCharsets.UTF_8);
         int code = Main.cli(new String[]{"run", source.toString()}, out, out);
-        check(code == 0 && bytes.toString(StandardCharsets.UTF_8).replace("\r\n", "\n").equals("/start\n#123456FF 4\n"), "optional module wrappers: " + bytes.toString(StandardCharsets.UTF_8));
+        check(code == 0 && TestOutput.withoutDuration(bytes.toString(StandardCharsets.UTF_8)).equals("/start\n#123456FF 4\n"), "optional module wrappers: " + bytes.toString(StandardCharsets.UTF_8));
         for (String file : List.of("examples/telegram_bot.fc", "examples/image_card.fc")) {
             bytes.reset(); check(Main.cli(new String[]{"check", file}, out, out) == 0, "example check: " + bytes.toString(StandardCharsets.UTF_8));
         }

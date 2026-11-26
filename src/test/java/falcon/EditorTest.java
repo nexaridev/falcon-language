@@ -41,11 +41,11 @@ final class EditorTest {
                 Files.writeString(file, "use math\nfunc main() { say(math.square(5)) }");
                 Files.writeString(math, "func square(value: int) -> int { give 42 }");
                 output.reset();
-                if (Main.cli(new String[]{"run", file.toString()}, stream, stream) != 0 || !output.toString(StandardCharsets.UTF_8).trim().equals("42"))
+                if (Main.cli(new String[]{"run", file.toString()}, stream, stream) != 0 || !TestOutput.withoutDuration(output.toString(StandardCharsets.UTF_8)).trim().equals("42"))
                     throw new AssertionError("Editable Falcon stdlib source not used: " + output);
                 Files.writeString(math, "func square(value: int) -> int { give 43 }");
                 output.reset();
-                if (Main.cli(new String[]{"run", file.toString()}, stream, stream) != 0 || !output.toString(StandardCharsets.UTF_8).trim().equals("43"))
+                if (Main.cli(new String[]{"run", file.toString()}, stream, stream) != 0 || !TestOutput.withoutDuration(output.toString(StandardCharsets.UTF_8)).trim().equals("43"))
                     throw new AssertionError("Stdlib edits require no rebuild: " + output);
                 Files.writeString(math, "func square(value: int) -> int { give true }");
                 output.reset();

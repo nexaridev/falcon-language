@@ -26,15 +26,15 @@ final class StdlibTest {
             failure("number rejects bool", "func main() { var x: number = true }", "Expected number, got bool");
             failure("number cannot narrow", "func f(x: number) -> int { give x } func main() {}", "Expected int, got number");
             failure("inferred int stays int", "func main() { var x = 1\nx = 2.5 }", "Expected int, got float");
-            success("list literal and index", "func main() { var items = [1,\n2.5, \"hi\", null]\nsay(items, items[1], \"😀a\"[0]) }", "[1,2.5,\"hi\",null] 2.5 😀\n");
+            success("list literal and index", "func main() { var items = [1,\n2.5, \"hi\", null]\nsay(items, items[1], \"😀a\"[0]) }", "[1, 2.5, hi, null] 2.5 😀\n");
             success("list iteration", "use collections as c\nfunc main() { var values = [1, 2, 3]\nvar sum: number = 0\neach (v in values) { sum = sum + c.asNumber(v) } say(sum) }", "6\n");
-            success("multiline trailing comma", "func main() { say([\n1,\n2,\n]) }", "[1,2]\n");
+            success("multiline trailing comma", "func main() { say([\n1,\n2,\n]) }", "[1, 2]\n");
             success("shared references equality", "use test\nfunc main() { var a = []\ntest.equal([a,a], [[],[]]) }", "");
             success("round exact integer", "use math\nfunc main() { say(math.round(9007199254740993)) }", "9007199254740993\n");
             failure("index bounds", "func main() { say([1][1]) }", "outside");
             failure("index type", "func main() { say([1][\"bad\"]) }", "Expected int, got string");
             failure("void element", "func main() { var a = [say()] }", "Cannot store void");
-            failure("any needs extraction", "func main() { var values = [1]\nsay(values[0] + 1) }", "Expected a number, got any");
+            success("typed list index needs no extraction", "func main() { var values = [1]\nsay(values[0] + 1) }", "2\n");
             success("math number", "use math\nfunc main() { say(math.square(2.5), math.abs(-1.5), math.min(1, 2.5), math.max(2.5, 1), math.clamp(10, 0, 5), math.round(2.6), math.toInt(2.9)) }", "6.25 1.5 1 2.5 5 3 2\n");
             success("all libraries load", "use io\nuse math\nuse text\nuse collections\nuse fs\nuse path\nuse random\nuse time\nuse json\nuse os\nuse test\nuse http\nfunc main() { test.near(math.pi(), 3.14159, 0.00001) }", "");
             failure("math conversion overflow", "use math\nfunc main() { say(math.toInt(9223372036854775808.0)) }", "64-bit integer range");
@@ -59,7 +59,7 @@ final class StdlibTest {
                 failure("malformed JSON " + malformed, "use json\nfunc main() { json.parse(" + quote(malformed) + ") }", "JSON");
             }
             failure("cyclic JSON", "use collections as c\nuse json\nfunc main() { var a = []\nc.push(a, a)\njson.stringify(a) }", "cyclic");
-            success("cyclic display", "use collections as c\nfunc main() { var a = []\nc.push(a, a)\nsay(a) }", "<cyclic or deeply nested collection>\n");
+            success("cyclic display", "use collections as c\nfunc main() { var a = []\nc.push(a, a)\nsay(a) }", "[<cycle>]\n");
             success("test equality", "use test\nfunc main() { test.equal([1, [true]], [1.0, [true]])\ntest.near(1.0, 1.01, 0.02) }", "");
             failure("assert failure", "use test\nfunc main() { test.assert(false, \"broken\") }", "broken");
             failure("equal failure", "use test\nfunc main() { test.equal(1, 2) }", "Expected 2, got 1");
@@ -77,7 +77,7 @@ final class StdlibTest {
         expect(io.code == 0 && io.output.equals("Name? Ada\n12 2.5\nfalse\nxy\n"), "console input and output: " + io);
         failure("EOF", "use io\nfunc main() { io.readLine() }", "End of input");
         Result args = execute("use os\nuse test\nfunc main() { say(os.args())\ntest.assert(os.cwd() != \"\" && os.home() != \"\" && os.platform() != \"\", \"os values\")\ntest.assert(!os.hasEnv(\"FALCON_TEST_MISSING_814BE22\"), \"missing env\")\ntest.equal(os.env(\"FALCON_TEST_MISSING_814BE22\"), \"\") }", "", List.of("one", "two words", "--flag"), "run");
-        expect(args.code == 0 && args.output.equals("[\"one\",\"two words\",\"--flag\"]\n"), "program arguments: " + args);
+        expect(args.code == 0 && args.output.equals("[one, two words, --flag]\n"), "program arguments: " + args);
     }
     private static void files() throws Exception {
         String directory = quote(root.resolve("files").toString());
@@ -122,7 +122,7 @@ final class StdlibTest {
         var options = new ArrayList<>(List.of(command, file.toString()));
         if (!args.isEmpty()) { options.add("--"); options.addAll(args); }
         int code = Main.cli(options.toArray(String[]::new), new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), stream, stream);
-        return new Result(code, output.toString(StandardCharsets.UTF_8).replace("\r\n", "\n"));
+        return new Result(code, TestOutput.withoutDuration(output.toString(StandardCharsets.UTF_8)));
     }
     private static void success(String name, String source, String output) throws Exception {
         Result result = execute(source, "", List.of(), "run");

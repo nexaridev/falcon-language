@@ -1,0 +1,22 @@
+// Falcon Logging module: timestamped console messages with simple log levels.
+use time
+
+func write(level: string, message: string) {
+    say("[" + time.iso(time.now()) + "] [" + level + "] " + message)
+}
+
+func debug(message: string) {
+    write("DEBUG", message)
+}
+
+func info(message: string) {
+    write("INFO", message)
+}
+
+func warn(message: string) {
+    write("WARN", message)
+}
+
+func error(message: string) {
+    write("ERROR", message)
+}

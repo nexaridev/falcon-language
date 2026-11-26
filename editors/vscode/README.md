@@ -1,5 +1,8 @@
 # Falcon for VS Code
 
+Licensed under the Apache License, Version 2.0. See the repository's
+[`LICENSE`](https://github.com/nexaridev/falcon-language/blob/main/LICENSE).
+
 Falcon support for `.fc` files:
 
 - Theme-aware highlighting, comments, matching brackets, and snippets.
@@ -13,6 +16,15 @@ Falcon support for `.fc` files:
 - **Falcon: Check Current File** in the Command Palette.
 
 ## Install
+
+The packaged VSIX is attached to each Falcon release at
+https://github.com/nexaridev/falcon-language/releases. Install it with:
+
+```sh
+code --install-extension falcon-language-0.12.0.vsix
+```
+
+To package from a checkout, use the steps below.
 
 From the Falcon repository root, build, package, and install into normal VS Code:
 

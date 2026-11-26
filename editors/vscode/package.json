@@ -3,8 +3,16 @@
   "displayName": "Falcon Language",
   "description": "Falcon syntax highlighting, live compiler diagnostics, completions, and snippets.",
   "version": "0.12.0",
-  "publisher": "falcon-local",
-  "private": true,
+  "publisher": "nexaridev",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexaridev/falcon-language.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/nexaridev/falcon-language/tree/main/editors/vscode",
+  "bugs": { "url": "https://github.com/nexaridev/falcon-language/issues" },
+  "keywords": ["falcon", "language", "syntax-highlighting", "diagnostics"],
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages"],
   "main": "./extension.js",

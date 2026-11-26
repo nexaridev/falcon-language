@@ -16,7 +16,7 @@ final class GuiTest {
             if (!GraphicsEnvironment.isHeadless()) {
                 bytes.reset();
                 check(Main.cli(new String[]{"run", file.toString()}, stream, stream) == 0);
-                check(bytes.toString().trim().equals("Ada"));
+                check(TestOutput.withoutDuration(bytes.toString()).trim().equals("Ada"));
             }
         } finally { java.nio.file.Files.deleteIfExists(file); }
         if (GraphicsEnvironment.isHeadless()) {

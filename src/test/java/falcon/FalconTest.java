@@ -9,6 +9,7 @@ import java.nio.file.Path;
 /** Dependency-free integration and regression suite; assertions are always enabled. */
 public final class FalconTest {
     private static int passed;
+    private static final java.util.List<String> failures = new java.util.ArrayList<>();
     private FalconTest() {}
 
     public static void main(String[] args) throws Exception {
@@ -92,7 +93,8 @@ public final class FalconTest {
             PrintStream stream = new PrintStream(bytes, true, StandardCharsets.UTF_8);
             expect(Main.cli(new String[]{"check", file.toString()}, stream, stream) == 0 && bytes.toString(StandardCharsets.UTF_8).startsWith("OK:"), "CLI check");
             bytes.reset();
-            expect(Main.cli(new String[]{"run", file.toString()}, stream, stream) == 0 && bytes.toString(StandardCharsets.UTF_8).trim().equals("42"), "CLI run");
+            expect(Main.cli(new String[]{"run", file.toString()}, stream, stream) == 0
+                    && TestOutput.withoutDuration(bytes.toString(StandardCharsets.UTF_8)).trim().equals("42"), "CLI run");
             expect(Main.cli(new String[]{"tokens", file.toString()}, stream, stream) == 0, "CLI tokens");
             expect(Main.cli(new String[]{"run", file.toString(), "--max-steps", "0"}, stream, stream) == 2, "CLI invalid limit");
             expect(Main.cli(new String[]{"run", file.toString(), "--max-steps", "1"}, stream, stream) == 1, "CLI runtime error");
@@ -113,22 +115,39 @@ public final class FalconTest {
         failure("orphan elseif", "func main() { elseif (true) {} }", "must follow");
         failure("orphan else", "func main() { else {} }", "must follow");
         failure("if condition type", "func main() { if (1) {} }", "bool");
-        passed += GuiTest.run();
-        passed += ModuleTest.run();
-        passed += JvmCacheTest.run();
-        passed += EditorTest.run();
-        passed += StdlibTest.run();
-        passed += OptionalLibraryTest.run();
+        runGroup("GUI", GuiTest::run);
+        runGroup("modules", ModuleTest::run);
+        runGroup("JVM cache", JvmCacheTest::run);
+        runGroup("JVM JIT", FastJitTest::run);
+        runGroup("editor", EditorTest::run);
+        runGroup("stdlib", StdlibTest::run);
+        runGroup("optional libraries", OptionalLibraryTest::run);
+        if (!failures.isEmpty()) {
+            System.err.println("Falcon tests failed:");
+            for (String failure : failures) System.err.println(" - " + failure);
+            throw new AssertionError(failures.size() + " test(s) failed; " + passed + " passed.");
+        }
         System.out.println("Passed " + passed + " tests.");
     }
 
     private static void output(String name, String source, String expected) {
-        String actual = run(source);
-        expect(actual.equals(expected), name + ": expected " + expected + " but got " + actual);
+        try {
+            String actual = run(source);
+            expect(actual.equals(expected), name + ": expected " + expected + " but got " + actual);
+        } catch (RuntimeException | AssertionError error) {
+            failures.add(name + ": " + error.getMessage());
+        }
     }
     private static void failure(String name, String source, String expected) {
-        try { run(source); throw new AssertionError(name + ": expected error containing " + expected); }
-        catch (FalconError e) { expect(e.getMessage().contains(expected), name + ": " + e.getMessage()); }
+        try {
+            run(source);
+            failures.add(name + ": expected error containing " + expected + " but the program succeeded");
+        } catch (FalconError error) {
+            expect(error.getMessage().contains(expected), name + ": expected error containing '"
+                    + expected + "' but got '" + error.getMessage() + "'");
+        } catch (RuntimeException | AssertionError error) {
+            failures.add(name + ": unexpected failure: " + error.getMessage());
+        }
     }
     private static String run(String source) {
         Ast.Program program = new Parser(new Lexer(source).scan()).parse();
@@ -139,7 +158,15 @@ public final class FalconTest {
         return bytes.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
     }
     private static void expect(boolean condition, String name) {
-        if (!condition) throw new AssertionError(name);
-        passed++;
+        if (condition) passed++;
+        else failures.add(name);
+    }
+
+    @FunctionalInterface
+    private interface TestGroup { int run() throws Exception; }
+
+    private static void runGroup(String name, TestGroup group) {
+        try { passed += group.run(); }
+        catch (Exception | AssertionError error) { failures.add(name + " test group: " + error.getMessage()); }
     }
 }

@@ -347,7 +347,15 @@ final class Checker {
                 Function function = functions.get(call.target());
                 if (function == null) function = StandardLibrary.function(call.target());
                 if (function == null) {
-                    Symbol callable = resolve(call.token());
+                    Symbol callable = null;
+                    for (Map<String, Symbol> scope : scopes) {
+                        if (scope.containsKey(call.token().text())) {
+                            callable = scope.get(call.token().text());
+                            break;
+                        }
+                    }
+                    if (callable == null)
+                        fail(call.token(), "Unknown function '" + call.token().text() + "'. Check the name or define the function first.");
                     if (callable.type() != Type.FUNCTION || callable.functionType() == null)
                         fail(call.token(), "Variable '" + call.token().text() + "' is not callable.");
                     FunctionType signature = callable.functionType();
