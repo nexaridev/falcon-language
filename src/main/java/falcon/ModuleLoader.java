@@ -137,7 +137,7 @@ final class ModuleLoader {
             try {
                 Path relative = Path.of(declaration.path());
                 if (declaration.path().isBlank() || relative.isAbsolute() || relative.getRoot() != null || !declaration.path().endsWith(".fc"))
-                    throw new FalconError(declaration.token(), "Use a relative path to a .fc module.");
+                    throw new FalconError(declaration.token(), "module '" + name + "' is not installed; run falcon install \"" + name + "\"");
                 imported = path.getParent().resolve(relative).toRealPath();
             } catch (IOException | InvalidPathException e) {
                 throw new FalconError(declaration.token(), "Cannot load module '" + declaration.path() + "': " + e.getMessage());

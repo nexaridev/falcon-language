@@ -73,7 +73,7 @@ final class ModuleTest {
         scenario("self import", "use main\nfunc main() {}", Map.of(), 1, "already in use");
         scenario("self import aliased", "use main as self\nfunc main() {}", Map.of(), 1, "Circular module import");
         scenario("quoted path needs alias", "use \"math.fc\"\nfunc main() {}", Map.of(), 1, "Expected 'as'");
-        scenario("extension required", "use \"math.txt\" as math\nfunc main() {}", Map.of(), 1, "relative path to a .fc module");
+        scenario("extension required", "use \"math.txt\" as math\nfunc main() {}", Map.of(), 1, "module 'math' is not installed; run falcon install \"math\"");
         scenario("module not a value", "use math\nfunc main() { say(math.value) }",
                 Map.of("math.fc", "func value() {}"), 1, "Unknown variable 'math'");
         scenario("bundled factorial", "use math\nfunc main() { say(math.factorial(0), math.factorial(5), math.factorial(20)) }",
