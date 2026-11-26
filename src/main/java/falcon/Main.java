@@ -34,8 +34,14 @@ public final class Main {
         if (args.length == 0 || args[0].equals("--help") || args[0].equals("help")) {
             out.println("Falcon " + VERSION + " — Java reference interpreter\n"
                     + "Usage: falcon <run|check|tokens> <file.fc> [--max-steps N]\n"
+                    + "       falcon deploy [module-dir] [--repo owner/repository]\n"
                     + "       falcon install <github-owner/repository>\n"
                     + "       falcon install <owner/repository> [--path <folder>] [--ref <branch-or-tag>] [--name <module>]\n"
+                    + "       falcon install <owner/repository> --release <tag> [--name <module>]\n"
+                    + "       falcon install <local-module-folder-or-.falconpkg> [--name <module>]\n"
+                    + "GitHub deploy token: FALCON_GITHUB_TOKEN, GITHUB_TOKEN, or github.token in ~/.falcon/config.properties\n"
+                    + "       falcon --token=<github-token>  (save token for deploys)\n"
+                    + "       falcon --token-clear  (remove saved token)\n"
                     + "       falcon install -u  (update Falcon)\n"
                     + "       falcon --upd-quiet  (silence this update reminder)\n"
                     + "       falcon setup\n"
@@ -55,6 +61,30 @@ public final class Main {
         }
         if (args.length == 1 && args[0].equals("--version")) { out.println("Falcon " + VERSION); return 0; }
         if (args.length == 1 && args[0].equals("--upd-quiet")) return UpdateNotifier.quiet(out, err);
+        if (args[0].equals("--token-clear")) {
+            if (args.length != 1) { err.println("Usage: falcon --token-clear"); return 2; }
+            try { GitHubReleaseClient.clearToken(GitHubReleaseClient.configFile()); out.println("Saved GitHub token cleared successfully."); return 0; }
+            catch (IOException e) { err.println("Could not clear the saved token: " + e.getMessage()); return 1; }
+        }
+        if (args[0].equals("--token") || args[0].startsWith("--token=")) {
+            if (args.length > 2 || (args.length == 2 && !args[0].equals("--token"))) {
+                err.println("Usage: falcon --token=<github-token> (or falcon --token to enter it privately)"); return 2;
+            }
+            String token;
+            if (args[0].equals("--token") && args.length == 2) token = args[1];
+            else if (args[0].equals("--token")) {
+                java.io.Console console = System.console();
+                if (console == null) { err.println("No terminal is available. Use falcon --token=<github-token>."); return 2; }
+                char[] secret = console.readPassword("GitHub token (input hidden): ");
+                token = secret == null ? "" : new String(secret);
+                java.util.Arrays.fill(secret == null ? new char[0] : secret, '\0');
+            } else {
+                token = args[0].substring("--token=".length());
+                args[0] = "--token=<redacted>";
+            }
+            try { GitHubReleaseClient.saveToken(token, GitHubReleaseClient.configFile()); out.println("GitHub token saved successfully."); return 0; }
+            catch (IOException e) { err.println("Could not save the GitHub token: " + e.getMessage()); return 1; }
+        }
         if (args[0].equals("jvm")) {
             if (args.length != 1) { err.println("Usage: falcon jvm"); return 2; }
             return jvm(in, out, err);
@@ -119,9 +149,53 @@ public final class Main {
             } catch (IOException e) { err.println("Could not start that command: " + e.getMessage()); return 2; }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); err.println("Command interrupted."); return 1; }
         }
+        if (args[0].equals("deploy")) {
+            Path moduleDirectory = Path.of(".");
+            String repository = null;
+            for (int i = 1; i < args.length; i++) {
+                if (i == 1 && !args[i].startsWith("--")) moduleDirectory = Path.of(args[i]);
+                else if (args[i].startsWith("--repo=")) repository = args[i].substring("--repo=".length());
+                else if (args[i].equals("--repo") && i + 1 < args.length) repository = args[++i];
+                else { err.println("Usage: falcon deploy [module-dir] [--repo owner/repository]"); return 2; }
+            }
+            try {
+                if (repository == null) repository = PackageCommands.repositoryFromModule(moduleDirectory, Path.of(".").toAbsolutePath().normalize());
+                return PackageCommands.deploy(moduleDirectory, repository, GitHubReleaseClient.token(), GitHubReleaseClient.DEFAULT_API, out, err);
+            } catch (Exception e) { err.println("Falcon deploy failed: " + e.getMessage()); return 1; }
+        }
         if (args[0].equals("install")) {
             if (args.length == 2 && args[1].equals("-u")) return updateInstalledFalcon(out, err);
             if (args.length < 2) { err.println("Usage: falcon install owner/repository [--path folder] [--ref branch-or-tag] [--name module]"); return 2; }
+            String releaseTag = null, localName = null;
+            boolean releaseInstall = false;
+            for (int i = 2; i < args.length; i++) {
+                if (args[i].equals("--release") && i + 1 < args.length) { releaseTag = args[++i]; releaseInstall = true; }
+                else if (args[i].startsWith("--release=")) { releaseTag = args[i].substring("--release=".length()); releaseInstall = true; }
+                else if (args[i].equals("--name") && i + 1 < args.length) localName = args[++i];
+                else if (args[i].startsWith("--name=")) localName = args[i].substring("--name=".length());
+                else if (releaseInstall) { err.println("Release install accepts --release <tag> and --name <module>."); return 2; }
+            }
+            boolean githubRepository = args[1].matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+");
+            if (releaseInstall) {
+                if (!githubRepository || releaseTag == null || releaseTag.isBlank()) {
+                    err.println("Usage: falcon install owner/repository --release <tag> [--name <module>]"); return 2;
+                }
+                try { return PackageCommands.installRelease(args[1], releaseTag, localName, GitHubReleaseClient.token(), GitHubReleaseClient.DEFAULT_API, Path.of(".").toAbsolutePath().normalize(), out, err); }
+                catch (Exception e) { err.println("Falcon install failed: " + e.getMessage()); return 1; }
+            }
+            if (!githubRepository) {
+                Path localPath;
+                try { localPath = Path.of(args[1]); }
+                catch (InvalidPathException e) { err.println("Invalid local module path: " + e.getMessage()); return 2; }
+                if (Files.exists(localPath)) {
+                    for (int i = 2; i < args.length; i++) {
+                        if (args[i].equals("--name") && i + 1 < args.length) { localName = args[++i]; continue; }
+                        if (args[i].startsWith("--name=")) { localName = args[i].substring("--name=".length()); continue; }
+                        err.println("Local install accepts only --name <module>."); return 2;
+                    }
+                    return PackageCommands.installLocal(localPath, localName, Path.of(".").toAbsolutePath().normalize(), out, err);
+                }
+            }
             Path script = Path.of("modules", "install.ps1").toAbsolutePath().normalize();
             if (!Files.isRegularFile(script)) { err.println("modules/install.ps1 is missing; restore it from the Falcon workspace."); return 2; }
             try {

@@ -117,6 +117,7 @@ public final class FalconTest {
         failure("if condition type", "func main() { if (1) {} }", "bool");
         runGroup("GUI", GuiTest::run);
         runGroup("modules", ModuleTest::run);
+        runGroup("package deploy/install", PackageTest::run);
         runGroup("JVM cache", JvmCacheTest::run);
         runGroup("JVM JIT", FastJitTest::run);
         runGroup("editor", EditorTest::run);
