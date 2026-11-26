@@ -18,7 +18,7 @@ final class PackageCommands {
             repository = GitHubReleaseClient.validateRepository(repository);
             ModulePackage.Metadata metadata = ModulePackage.inspect(moduleDirectory, true);
             String asset = metadata.name() + "-" + metadata.version() + ".falconpkg";
-            String tag = metadata.name() + "-v" + metadata.version();
+            String tag = "v" + metadata.version();
             Path temporary = Files.createTempDirectory("falcon-deploy-");
             archive = temporary.resolve(asset);
             checksum = temporary.resolve(asset + ".sha256");

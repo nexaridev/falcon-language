@@ -5,16 +5,17 @@ module uses the conventional initializer name.
 
 Timestamped console log helpers: `debug`, `info`, `warn`, and `error`.
 
-Install this subfolder from the public Falcon repository:
+This package is named `logging`, version `0.1.0`, and published in the
+`nexaridev/logging-falcon` repository as release `v0.1.0`. Install it with:
 
 ```sh
-falcon install nexaridev/falcon-language --path packages/logging --name logging --ref main
+falcon install nexaridev/logging-falcon --release v0.1.0
 ```
 
 Then import it from a `.fc` file:
 
 ```fc
-use "logging" as log
+use logging as log
 
 func main() {
     log.info("Bot started")

@@ -106,7 +106,7 @@ final class PackageTest {
                     String name = queryValue(exchange.getRequestURI().getRawQuery(), "name");
                     assets.put(name, exchange.getRequestBody().readAllBytes());
                     respond(exchange, 201, "application/json", "{}".getBytes(StandardCharsets.UTF_8));
-                } else if (exchange.getRequestMethod().equals("GET") && exchange.getRequestURI().getPath().endsWith("/releases/tags/logging-v1.2.3")) {
+                } else if (exchange.getRequestMethod().equals("GET") && exchange.getRequestURI().getPath().endsWith("/releases/tags/v1.2.3")) {
                     verifyAuth(exchange);
                     String response = "{\"assets\":[{\"id\":1,\"name\":\"logging-1.2.3.falconpkg\"},{\"id\":2,\"name\":\"logging-1.2.3.falconpkg.sha256\"}]}";
                     respond(exchange, 200, "application/json", response.getBytes(StandardCharsets.UTF_8));
@@ -129,11 +129,11 @@ final class PackageTest {
             var stream = new java.io.PrintStream(output, true, StandardCharsets.UTF_8);
             int status = PackageCommands.deploy(module, "test-owner/test-repo", "test-token", base, stream, stream);
             check(status == 0, "direct API deploy succeeds: " + output.toString(StandardCharsets.UTF_8));
-            check("logging-v1.2.3".equals(createdTag.get()), "module/version creates a release tag");
+            check("v1.2.3".equals(createdTag.get()), "module version creates a matching v-prefixed release tag");
             check(assets.keySet().containsAll(java.util.List.of("logging-1.2.3.falconpkg", "logging-1.2.3.falconpkg.sha256")), "package and checksum uploaded");
             Path installed = root.resolve("install-project");
             output.reset();
-            status = PackageCommands.installRelease("test-owner/test-repo", "logging-v1.2.3", null, "test-token", base, installed, stream, stream);
+            status = PackageCommands.installRelease("test-owner/test-repo", "v1.2.3", null, "test-token", base, installed, stream, stream);
             check(status == 0, "direct API release install succeeds: " + output.toString(StandardCharsets.UTF_8));
             check(Files.isRegularFile(installed.resolve("modules/logging/__init__.fc")), "release install lands under modules folder");
             check(failure.get() == null, "mock GitHub API had no request failures: " + failure.get());
