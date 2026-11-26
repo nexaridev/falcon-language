@@ -1,3 +1,5 @@
+// Falcon and NexariDev maintain only modules they publish. Third-party modules
+// come from their authors; Falcon does not assume responsibility for their code.
 // Falcon Logging module: timestamped console messages with simple log levels.
 use time
 

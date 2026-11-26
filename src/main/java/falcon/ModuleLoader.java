@@ -89,6 +89,7 @@ final class ModuleLoader {
         for (Function function : program.functions()) localNames.add(function.name().text());
         for (Import declaration : program.imports()) {
             String alias = declaration.alias().text();
+            checkModuleNameConflict(path.getParent(), declaration.path(), declaration.token());
             if (alias.equals("say") || localNames.contains(alias) || module.imports().containsKey(alias))
                 throw new FalconError(declaration.alias(), "Module alias '" + alias + "' is already in use.");
             String standard = standardName(declaration.path(), "std/");
@@ -96,22 +97,30 @@ final class ModuleLoader {
                 module.imports().put(alias, standardModule(standard, declaration.token()));
                 continue;
             }
-            String installed = installedName(declaration.path());
+            String installedPath = declaration.named() && declaration.path().endsWith(".fc")
+                    ? declaration.path().substring(0, declaration.path().length() - 3) : declaration.path();
+            String installed = installedName(installedPath);
             if (installed != null) {
-                Path modules = findModules(path.getParent());
-                if (modules == null) throw new FalconError(declaration.token(), "No modules folder found in this project. Run 'falcon install owner/repository' first.");
-                modules = modules.resolve(installed).normalize();
-                if (!modules.startsWith(path.getParent().resolve("modules").normalize())) throw new FalconError(declaration.token(), "Invalid installed module path.");
-                Path main = modules.resolve("module.json");
-                if (!Files.isRegularFile(main)) throw new FalconError(declaration.token(), "Installed module '" + installed + "' has no module.json manifest.");
-                try {
-                    Object manifest = Json.read(Files.readString(main));
-                    if (!(manifest instanceof Map<?, ?> data) || !(data.get("main") instanceof String entryFile) || !entryFile.endsWith(".fc") || Path.of(entryFile).isAbsolute())
-                        throw new FalconError(declaration.token(), "Invalid module.json: expected a relative .fc 'main' path.");
-                    Path resolved = modules.resolve(entryFile).normalize();
-                    if (!resolved.startsWith(modules)) throw new FalconError(declaration.token(), "Module main path escapes its installation folder.");
-                    module.imports().put(alias, visit(resolved, false, declaration.token()));
-                } catch (IOException | InvalidPathException e) { throw new FalconError(declaration.token(), "Cannot read installed module manifest: " + e.getMessage()); }
+                Path modulesRoot = findModules(path.getParent());
+                if (modulesRoot == null) throw new FalconError(declaration.token(), "No modules folder found in this project. Run 'falcon install owner/repository' first.");
+                Path modules = modulesRoot.resolve(installed).normalize();
+                if (!modules.startsWith(modulesRoot)) throw new FalconError(declaration.token(), "Invalid installed module path.");
+                Path initializer = folderInitializer(modules);
+                Path manifest = modules.resolve("module.json");
+                Path entryPath = initializer;
+                if (entryPath == null && Files.isRegularFile(manifest)) {
+                    try {
+                        Object parsedManifest = Json.read(Files.readString(manifest));
+                        if (!(parsedManifest instanceof Map<?, ?> data) || !(data.get("main") instanceof String entryFile)
+                                || !entryFile.endsWith(".fc") || Path.of(entryFile).isAbsolute())
+                            throw new FalconError(declaration.token(), "Invalid module.json: expected a relative .fc 'main' path.");
+                        entryPath = modules.resolve(entryFile).normalize();
+                        if (!entryPath.startsWith(modules)) throw new FalconError(declaration.token(), "Module main path escapes its installation folder.");
+                    } catch (IOException | InvalidPathException e) {
+                        throw new FalconError(declaration.token(), "Cannot read installed module manifest: " + e.getMessage());
+                    }
+                } else if (entryPath == null) throw new FalconError(declaration.token(), "Installed module '" + installed + "' needs __init__.fc, init.fc, or a module.json manifest.");
+                module.imports().put(alias, visit(entryPath, false, declaration.token()));
                 continue;
             }
             String nativeName = standardName(declaration.path(), "native/");
@@ -144,8 +153,42 @@ final class ModuleLoader {
         if (name.startsWith("modules/")) name = name.substring(8);
         if (!name.matches("[A-Za-z0-9_.-]+") || name.equals(".") || name.equals("..")) return null;
         Path local = overlayPath == null ? null : findModules(overlayPath.getParent());
-        if (local != null) local = local.resolve(name).resolve("module.json");
-        return local != null && Files.isRegularFile(local) ? name : null;
+        if (local != null) local = local.resolve(name);
+        if (local == null) return null;
+        return Files.isRegularFile(local.resolve("module.json")) || folderInitializer(local) != null ? name : null;
+    }
+
+    private Path folderInitializer(Path directory) {
+        Path conventional = directory.resolve("__init__.fc");
+        if (Files.isRegularFile(conventional)) return conventional;
+        Path simple = directory.resolve("init.fc");
+        return Files.isRegularFile(simple) ? simple : null;
+    }
+
+    private Path findSiblingModuleFile(Path from, Path projectRoot, String name) {
+        for (Path current = from; current != null; current = current.getParent()) {
+            Path candidate = current.resolve(name + ".fc");
+            if (Files.isRegularFile(candidate)) return candidate;
+            if (current.equals(projectRoot)) break;
+        }
+        return null;
+    }
+
+    private void checkModuleNameConflict(Path from, String importPath, Token token) {
+        String name = importPath;
+        if (name.startsWith("modules/")) name = name.substring("modules/".length());
+        if (name.endsWith(".fc")) name = name.substring(0, name.length() - 3);
+        if (!name.matches("[A-Za-z0-9_.-]+") || name.equals(".") || name.equals("..")) return;
+        Path modulesRoot = findModules(from);
+        if (modulesRoot == null) return;
+        Path directory = modulesRoot.resolve(name).normalize();
+        if (!directory.startsWith(modulesRoot)) return;
+        Path initializer = folderInitializer(directory);
+        Path conflictingFile = initializer == null ? null : findSiblingModuleFile(from, modulesRoot.getParent(), name);
+        if (conflictingFile != null)
+            throw new FalconError(token, "Module name '" + name + "' conflicts: folder '" + directory
+                    + "' contains " + initializer.getFileName() + " and file '" + conflictingFile
+                    + "' defines the same module. Keep either the folder module or the .fc file.");
     }
 
     private Path findModules(Path directory) {

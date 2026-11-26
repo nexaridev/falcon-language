@@ -41,7 +41,7 @@ The scripts discover a JDK through `JAVA_HOME`, `javac` on `PATH`, or your
 falcon build examples/hello.fc --args "first argument"
 ```
 
-Quick install from GitHub: `.\install.ps1`. On Linux/macOS, run `bash install.sh`. Install a public Falcon module in the current project with `falcon install owner/repository`; modules need `module.json` with a relative `.fc` `main` path, then import with `use "module-name" as alias`. Add `--path`, `--ref`, and `--name` to install a module from a repo subfolder at a selected branch or tag. VS Code checks files as you type and shows compiler errors with red underlines.
+Quick install from GitHub: `.\install.ps1`. On Linux/macOS, run `bash install.sh`. Install a public module with `falcon install owner/repository`; module folders can use `__init__.fc` or `init.fc`, or provide `module.json`. `--path`, `--ref`, and `--name` select a subfolder, branch/tag, and local name. See [module authoring and publishing](docs/modules.md). VS Code checks files as you type and shows compiler errors with red underlines.
 
 For a one-file Windows installer, download **FalconSetup.exe** from the latest
 [GitHub release](https://github.com/nexaridev/falcon-language/releases). It

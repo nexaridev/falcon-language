@@ -1,5 +1,8 @@
 # Falcon logging module
 
+The folder initializer is `__init__.fc`; `module.json` is optional when a
+module uses the conventional initializer name.
+
 Timestamped console log helpers: `debug`, `info`, `warn`, and `error`.
 
 Install this subfolder from the public Falcon repository:

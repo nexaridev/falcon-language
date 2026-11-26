@@ -23,7 +23,7 @@
     <resources>
       <resource>
         <directory>.</directory>
-        <includes><include>module.json</include><include>main.fc</include><include>README.md</include></includes>
+        <includes><include>module.json</include><include>__init__.fc</include><include>README.md</include></includes>
       </resource>
       <resource>
         <directory>${project.basedir}/../..</directory>

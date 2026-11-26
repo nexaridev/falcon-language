@@ -16,6 +16,15 @@ final class ModuleTest {
                 Map.of("math.fc", "func square(x: int) -> int { give x * x }"), 0, "25\n");
         scenario("explicit relative path", "use \"lib/util.fc\" as util\nfunc main() { say(util.value()) }",
                 Map.of("lib/util.fc", "func value() -> int { give 8 }"), 0, "8\n");
+        scenario("folder module initializer", "use foldermod as foldermod\nfunc main() { say(foldermod.value()) }",
+                Map.of("modules/foldermod/__init__.fc", "func value() -> int { give 42 }"), 0, "42\n");
+        scenario("folder initializer imports sibling", "use foldermod as foldermod\nfunc main() { say(foldermod.value()) }",
+                Map.of("modules/foldermod/__init__.fc", "use \"helper.fc\" as helper\nfunc value() -> int { give helper.value() }",
+                        "modules/foldermod/helper.fc", "func value() -> int { give 43 }"), 0, "43\n");
+        scenario("file and folder module conflict", "use poo\nfunc main() {}",
+                Map.of("poo.fc", "func value() {}", "modules/poo/__init__.fc", "func value() {}"), 1,
+                "conflicts: folder '");
+        persistentJvmFolderModule();
         scenario("bare alias", "use math as m; func main() { say(m.value()) }",
                 Map.of("math.fc", "func value() -> int { give 3 }"), 0, "3\n");
         scenario("isolated function names", "use left\nuse right\nfunc value() -> int { give 100 } func main() { say(value(), left.value(), right.value()) }",
@@ -115,6 +124,28 @@ final class ModuleTest {
                         || !output.toString(StandardCharsets.UTF_8).startsWith("OK:"))
                     throw new AssertionError(name + ": check failed or executed code");
             }
+            passed++;
+        } finally {
+            try (var paths = Files.walk(directory)) {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+            }
+        }
+    }
+
+    private static void persistentJvmFolderModule() throws Exception {
+        Path directory = Files.createTempDirectory("falcon jvm folder module ");
+        try {
+            Path module = directory.resolve("modules/foldermod/__init__.fc");
+            Files.createDirectories(module.getParent());
+            Files.writeString(module, "func value() -> int { give 44 }");
+            Path main = directory.resolve("main.fc");
+            Files.writeString(main, "use foldermod as foldermod\nfunc main() { say(foldermod.value()) }");
+            String commands = "falcon run \"" + main + "\"\n:quit\n";
+            var output = new ByteArrayOutputStream();
+            var stream = new PrintStream(output, true, StandardCharsets.UTF_8);
+            int code = Main.cli(new String[]{"jvm"}, new java.io.ByteArrayInputStream(commands.getBytes(StandardCharsets.UTF_8)), stream, stream);
+            String actual = TestOutput.withoutDuration(output.toString(StandardCharsets.UTF_8));
+            if (code != 0 || !actual.contains("44\n")) throw new AssertionError("persistent JVM couldn't run a folder module: " + actual);
             passed++;
         } finally {
             try (var paths = Files.walk(directory)) {
