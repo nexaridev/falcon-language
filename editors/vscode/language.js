@@ -24,9 +24,18 @@ function mask(source, strings = true) {
 
 const identifier = '[\\p{L}_][\\p{L}\\p{N}_]*';
 function functions(source) {
-    const pattern = new RegExp(`\\bfunc\\s+(${identifier})\\s*\\(([^)]*)\\)\\s*(?:->\\s*(int|float|number|bool|string|void|any|list|map)\\b)?`, 'gu');
+    const pattern = new RegExp(`\\bfunc\\s+(${identifier})\\s*\\(([^)]*)\\)\\s*(?:->\\s*([^\\s{]+))?`, 'gu');
     return [...mask(source).matchAll(pattern)].map(m => ({
         name: m[1], params: m[2].split(',').map(p => p.trim()).filter(Boolean), result: m[3] || 'void', offset: m.index
+    }));
+}
+
+function structs(source) {
+    const code = mask(source);
+    const pattern = new RegExp(`\\bstruct\\s+(${identifier})\\s*\\{([^}]*)\\}`, 'gu');
+    return [...code.matchAll(pattern)].map(match => ({
+        name: match[1],
+        fields: match[2].split(/[,\r\n]+/u).map(field => field.trim()).filter(Boolean)
     }));
 }
 
@@ -45,4 +54,4 @@ function diagnostic(output) {
     return match ? { file: match[1], line: Number(match[2]) - 1, column: Number(match[3]) - 1, message: match[4] } : null;
 }
 
-module.exports = { mask, functions, imports, diagnostic, identifier };
+module.exports = { mask, functions, structs, imports, diagnostic, identifier };

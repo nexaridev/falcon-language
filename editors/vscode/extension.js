@@ -161,22 +161,61 @@ function activate(context) {
     async function readModule(document, alias) {
         const imported = language.imports(document.getText()).find(i => i.alias === alias);
         if (!imported) return '';
+        const readSource = async filename => {
+            const full = path.resolve(filename);
+            const samePath = candidate => process.platform === 'win32'
+                ? path.resolve(candidate).toLowerCase() === full.toLowerCase()
+                : path.resolve(candidate) === full;
+            const open = vscode.workspace.textDocuments.find(d => samePath(d.uri.fsPath));
+            if (open) return open.getText();
+            try { return await fs.promises.readFile(full, 'utf8'); } catch { return null; }
+        };
         const bundled = async filename => {
             const fullPath = path.join(vscode.workspace.getConfiguration('falcon').get('stdlibPath') || context.asAbsolutePath('stdlib'), filename);
-            const open = vscode.workspace.textDocuments.find(d => path.resolve(d.uri.fsPath) === path.resolve(fullPath));
-            if (open) return open.getText();
-            try { return await fs.promises.readFile(fullPath, 'utf8'); } catch { return ''; }
+            return (await readSource(fullPath)) || '';
         };
         const standard = new RegExp(`^std/(${language.identifier}\\.fc)$`, 'u').exec(imported.path);
         if (standard) return bundled(standard[1]);
-        const filename = path.resolve(path.dirname(document.uri.fsPath), imported.path);
-        const open = vscode.workspace.textDocuments.find(d => path.resolve(d.uri.fsPath) === filename);
-        if (open) return open.getText();
-        try { return await fs.promises.readFile(filename, 'utf8'); }
-        catch (error) {
-            if (error.code === 'ENOENT' && imported.named) return bundled(imported.path);
-            return '';
+
+        // Match the compiler's installed-module lookup: search ancestor project
+        // roots for modules/<name> and use its declared or conventional entry.
+        if (imported.named) {
+            let moduleName = imported.path;
+            if (moduleName.startsWith('modules/')) moduleName = moduleName.slice('modules/'.length);
+            if (moduleName.endsWith('.fc')) moduleName = moduleName.slice(0, -3);
+            if (/^[A-Za-z0-9_.-]+$/u.test(moduleName) && moduleName !== '.' && moduleName !== '..') {
+                const roots = [];
+                for (let current = path.dirname(document.uri.fsPath); ; current = path.dirname(current)) {
+                    roots.push(current);
+                    if (path.dirname(current) === current) break;
+                }
+                for (const current of roots) {
+                    const moduleRoot = path.join(current, 'modules', moduleName);
+                    let entry = path.join(moduleRoot, '__init__.fc');
+                    try {
+                        await fs.promises.access(entry);
+                    } catch {
+                        entry = path.join(moduleRoot, 'init.fc');
+                        try { await fs.promises.access(entry); }
+                        catch {
+                            try {
+                                const manifest = JSON.parse(await fs.promises.readFile(path.join(moduleRoot, 'module.json'), 'utf8'));
+                                if (typeof manifest.main !== 'string' || !manifest.main.endsWith('.fc')) continue;
+                                entry = path.resolve(moduleRoot, manifest.main);
+                                const relative = path.relative(moduleRoot, entry);
+                                if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
+                            } catch { continue; }
+                        }
+                    }
+                    return readSource(entry);
+                }
+            }
         }
+        const filename = path.resolve(path.dirname(document.uri.fsPath), imported.path);
+        const source = await readSource(filename);
+        if (source !== null) return source;
+        if (imported.named) return bundled(imported.path);
+        return '';
     }
 
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider(selector, {
@@ -187,7 +226,24 @@ function activate(context) {
             if (before.length && clean.at(-1) !== before.at(-1) && before.at(-1) !== ' ') return [];
             const line = document.lineAt(position.line).text.slice(0, position.character);
             const member = new RegExp(`(${language.identifier})\\.([\\p{L}\\p{N}_]*)$`, 'u').exec(line);
-            if (member) return language.functions(await readModule(document, member[1])).map(functionItem);
+            if (member) {
+                const source = await readModule(document, member[1]);
+                const items = language.functions(source).map(functionItem);
+                for (const struct of language.structs(source)) {
+                    const item = new vscode.CompletionItem(struct.name, vscode.CompletionItemKind.Class);
+                    item.detail = `struct ${struct.name}${struct.fields.length ? ` { ${struct.fields.join(', ')} }` : ''}`;
+                    const snippet = new vscode.SnippetString().appendText(struct.name + '(');
+                    struct.fields.forEach((field, i) => {
+                        const fieldName = field.split(':')[0].trim();
+                        if (i) snippet.appendText(', ');
+                        snippet.appendPlaceholder(fieldName);
+                    });
+                    snippet.appendText(')').appendTabstop(0);
+                    item.insertText = snippet;
+                    items.push(item);
+                }
+                return items;
+            }
             const items = language.functions(document.getText()).map(functionItem);
             items.push(functionItem({ name: 'say', params: ['value'], result: 'void' }));
             for (const word of ['func', 'var', 'fix', 'give', 'if', 'elseif', 'else', 'when', 'while', 'each', 'in', 'use', 'as', 'true', 'false', 'null', 'int', 'float', 'number', 'bool', 'string', 'void', 'any', 'list', 'map'])

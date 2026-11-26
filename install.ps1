@@ -53,6 +53,24 @@ try {
   } finally { $commandKey.Dispose() }
   Write-Host 'Falcon installed and added to your user PATH.'
   Write-Host 'Try: falcon --version or fc --version'
+  $answer = Read-Host 'Proceed with installing the VS Code extension using editors/vscode/package.ps1? [Y/n]'
+  if ($answer -notmatch '^(?i:n|no)$') {
+    $packageScript = Join-Path $root 'editors/vscode/package.ps1'
+    if (-not (Test-Path -LiteralPath $packageScript -PathType Leaf)) {
+      Write-Warning "Falcon CLI is installed, but the VS Code packaging script was not found: $packageScript"
+    } else {
+      try {
+        Write-Host 'Installing the Falcon VS Code extension...'
+        & $packageScript -Install
+        if ($LASTEXITCODE -ne 0) { throw "VS Code installer exited with code $LASTEXITCODE." }
+      } catch {
+        Write-Warning "Falcon CLI is installed, but the VS Code extension could not be installed: $($_.Exception.Message)"
+        Write-Host "You can retry with: $packageScript -Install"
+      }
+    }
+  } else {
+    Write-Host 'Skipping the VS Code extension. Run editors/vscode/package.ps1 -Install later to install it.'
+  }
 } finally {
   Remove-Item $zip -Force -ErrorAction SilentlyContinue
   Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
