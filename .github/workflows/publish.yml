@@ -1,0 +1,68 @@
+name: Publish Falcon release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check release version matches project metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          pom_version="$(sed -n '0,/<version>/{s/.*<version>\(.*\)<\/version>.*/\1/p;}' pom.xml)"
+          cli_version="$(sed -n 's/^[[:space:]]*static final String VERSION = "\([^"]*\)";.*/\1/p' src/main/java/falcon/Main.java | head -n1)"
+          extension_version="$(node -p "require('./editors/vscode/package.json').version")"
+          for value in "$pom_version" "$cli_version" "$extension_version"; do
+            if [[ "$value" != "$tag_version" ]]; then
+              echo "Release tag $tag_version does not match project version $value" >&2
+              exit 1
+            fi
+          done
+      - name: Build and test Falcon
+        run: bash ./build.sh
+      - name: Publish Maven package
+        run: mvn --batch-mode deploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Windows setup executable
+        run: dotnet publish installer/FalconSetup.csproj --configuration Release --runtime win-x64 --self-contained true --property:PublishSingleFile=true --output build/release/installer
+      - name: Package VS Code extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p editors/vscode/runtime editors/vscode/stdlib build/release
+          cp build/falcon.jar editors/vscode/runtime/falcon.jar
+          cp stdlib/*.fc editors/vscode/stdlib/
+          version="$(node -p "require('./editors/vscode/package.json').version")"
+          (cd editors/vscode && npx --yes @vscode/vsce package --skip-license --out "$GITHUB_WORKSPACE/build/release/falcon-language-${version}.vsix")
+          cp target/falcon-language-"$version".jar build/release/falcon.jar
+          (cd build/release && sha256sum falcon.jar > falcon.jar.sha256)
+          cp build/release/installer/FalconSetup.exe build/release/FalconSetup.exe
+      - name: Attach installers to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" build/release/FalconSetup.exe build/release/falcon.jar build/release/falcon.jar.sha256 build/release/falcon-language-*.vsix --clobber
